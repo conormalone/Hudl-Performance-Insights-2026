@@ -1,0 +1,21 @@
+# Outputs
+outputs/
+code/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.so
+.venv/
+venv/
+
+# Data
+assets/*.csv
+assets/*.json
+assets/*.parquet
+!assets/README.md
+
+# IDE
+.vscode/
+.idea/
