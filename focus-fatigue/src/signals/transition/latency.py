@@ -255,7 +255,16 @@ def compute_reaction_time(
         "post_transition_speed", "heading_change_deg", "valid",
     ]
     if not records:
-        return pd.DataFrame(columns=columns)
+        return pd.DataFrame({
+            "transition_id": pd.Series(dtype="int"),
+            "player_id": pd.Series(dtype="int"),
+            "team_id_opta": pd.Series(dtype="int"),
+            "reaction_time_s": pd.Series(dtype="float"),
+            "pre_transition_speed": pd.Series(dtype="float"),
+            "post_transition_speed": pd.Series(dtype="float"),
+            "heading_change_deg": pd.Series(dtype="float"),
+            "valid": pd.Series(dtype="bool"),
+        })
 
     return pd.DataFrame(records, columns=columns)
 
@@ -370,13 +379,18 @@ def aggregate_latency_by_block(
         reaction time), ``n_frames``.
     """
     if len(latency_df) == 0 or not latency_df["valid"].any():
-        # Return empty DataFrame with correct schema
-        return pd.DataFrame(
-            columns=[
-                "game_id", "block_id", "phase", "player_id",
-                "team_id_opta", "signal_name", "signal_value", "n_frames",
-            ]
-        )
+        # Return empty DataFrame with correct schema and dtypes
+        empty = pd.DataFrame({
+            "game_id": pd.Series(dtype="str"),
+            "block_id": pd.Series(dtype="str"),
+            "phase": pd.Series(dtype="int"),
+            "player_id": pd.Series(dtype="int"),
+            "team_id_opta": pd.Series(dtype="int"),
+            "signal_name": pd.Series(dtype="str"),
+            "signal_value": pd.Series(dtype="float"),
+            "n_frames": pd.Series(dtype="int"),
+        })
+        return empty
 
     # Build a frame → block_id mapping from blocks
     frame_to_block: dict[int, tuple[str, int]] = {}
@@ -423,12 +437,16 @@ def aggregate_latency_by_block(
     valid = valid.dropna(subset=["block_id"])
 
     if len(valid) == 0:
-        return pd.DataFrame(
-            columns=[
-                "game_id", "block_id", "phase", "player_id",
-                "team_id_opta", "signal_name", "signal_value", "n_frames",
-            ]
-        )
+        return pd.DataFrame({
+            "game_id": pd.Series(dtype="str"),
+            "block_id": pd.Series(dtype="str"),
+            "phase": pd.Series(dtype="int"),
+            "player_id": pd.Series(dtype="int"),
+            "team_id_opta": pd.Series(dtype="int"),
+            "signal_name": pd.Series(dtype="str"),
+            "signal_value": pd.Series(dtype="float"),
+            "n_frames": pd.Series(dtype="int"),
+        })
 
     # Aggregate per player per block
     agg = (

@@ -81,6 +81,17 @@ def validate_output(df: pd.DataFrame, signal_name: str | None = None) -> bool:
     ValueError
         Describing the first validation failure encountered.
     """
+    # ── Handle empty DataFrames ───────────────────────────────────────────
+    if len(df) == 0:
+        # Empty DataFrame with correct columns is valid
+        missing = [c for c in REQUIRED_COLUMNS if c not in df.columns]
+        if missing:
+            raise ValueError(
+                f"Missing required columns: {missing}. "
+                f"DataFrame has columns: {list(df.columns)}"
+            )
+        return True
+
     # ── Required columns ────────────────────────────────────────────────
     missing = [c for c in REQUIRED_COLUMNS if c not in df.columns]
     if missing:
