@@ -24,6 +24,7 @@ def _pre_transition_heading(
     trans_frame: int,
     smoothing_frames: int,
     heading_col: str = "heading",
+    frame_col: str = "frame_count",
 ) -> float:
     """Compute the mean heading before the transition for a single player.
 
@@ -37,13 +38,20 @@ def _pre_transition_heading(
         Number of frames before transition to average over.
     heading_col : str
         Column containing heading angles (degrees).
+    frame_col : str
+        Column containing frame numbers.
 
     Returns
     -------
     float
         Mean heading angle before transition, or NaN if insufficient data.
     """
-    before = df_player[df_player[heading_col].notna()].iloc[-smoothing_frames:]
+    # Only look at frames before the transition
+    before_transition = df_player[
+        (df_player[heading_col].notna()) &
+        (df_player[frame_col] < trans_frame)
+    ]
+    before = before_transition.iloc[-smoothing_frames:]
     if len(before) < 2:
         return np.nan
     return float(before[heading_col].mean())
@@ -166,7 +174,7 @@ def compute_reaction_time(
                 continue
 
             pre_heading = _pre_transition_heading(
-                pid_df, trans_frame, smoothing
+                pid_df, trans_frame, smoothing, frame_col=frame_col
             )
             if pd.isna(pre_heading):
                 records.append(_empty_record(tid, pid, gaining_team))
@@ -205,7 +213,9 @@ def compute_reaction_time(
                 if pd.isna(heading):
                     continue
 
-                heading_change = abs(heading - pre_heading)
+                heading_change_rad = abs(heading - pre_heading)
+                # heading is in radians; convert to degrees to compare against threshold
+                heading_change = float(np.degrees(heading_change_rad))
                 # Normalise to [0, 180]
                 heading_change = heading_change % 360
                 if heading_change > 180:
