@@ -138,6 +138,7 @@ def process_one_match(
     pressure_dataset = build_pressure_dataset(
         blocks, proximity_agg, depth_agg, reo_agg, trans_agg,
         config=config,
+        game_id=match_id,  # FIX H1: pass game_id
     )
 
     if len(pressure_dataset) == 0:
@@ -159,6 +160,10 @@ def process_one_match(
 
     # Classify blocks
     result_df = classify_pressure_blocks(pressure_df, config=config)
+
+    # FIX H1: Ensure game_id is in the output
+    pressure_dataset["game_id"] = match_id
+    result_df["game_id"] = match_id
 
     # Save outputs
     output_dir = Path(config.output_dir)

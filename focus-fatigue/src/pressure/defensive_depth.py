@@ -74,23 +74,14 @@ def compute_defensive_depth(
     return result
 
 
+from .gk_utils import flag_goalkeepers
+
 def _flag_gks(df: pd.DataFrame) -> pd.Series:
-    """Flag goalkeepers using jersey number + position heuristic.
+    """Flag goalkeepers using the shared gk_utils (H3 fix).
 
     Returns boolean series True for GK rows.
     """
-    gk_records = {}
-    for (pid, tid), grp in df.groupby(["player_id", "team_id_opta"]):
-        jersey = grp["jersey_no"].iloc[0]
-        if jersey == 1:
-            mean_x = grp["x"].mean()
-            if abs(mean_x) > 45:
-                gk_records[(pid, tid)] = True
-
-    return df.apply(
-        lambda r: gk_records.get((r["player_id"], r["team_id_opta"]), False),
-        axis=1,
-    )
+    return flag_goalkeepers(df)
 
 
 def aggregate_defensive_depth_to_blocks(

@@ -59,31 +59,12 @@ def _normalise_dtype(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _resolve_goalkeeper(df: pd.DataFrame) -> pd.Series:
-    """Flag goalkeepers based on jersey number (1) and position.
+    """Flag goalkeepers using shared gk_utils (H3 fix).
 
-    The goalkeeper column in raw data is not reliably populated.
-    We flag a player as GK if jersey_no == 1 AND their average
-    position is close to their own goal line (extreme x values).
-    This is a heuristic; shape.json role descriptions provide
-    the ground truth (see load_shapes.py).
+    Delegates to gk_utils.flag_goalkeepers for consistent detection.
     """
-    # Simple heuristic: players with jersey 1 whose mean pos_y
-    # is near the centre and mean pos_x is at an extreme
-    gk_candidates = (
-        df[df["jersey_no"] == 1]
-        .groupby(["player_id", "team_id_opta"])[["pos_x", "pos_y"]]
-        .mean()
-    )
-    is_gk = {}
-    for (pid, tid), row in gk_candidates.iterrows():
-        # GK is typically within 10m of goal line and near centre
-        near_goal = abs(row["pos_x"]) > 45  # near x=-57 or x=59 extremes
-        near_center = abs(row["pos_y"]) < 10
-        is_gk[(pid, tid)] = near_goal and near_center
-
-    return df.apply(
-        lambda r: is_gk.get((r["player_id"], r["team_id_opta"]), False), axis=1
-    )
+    from src.pressure.gk_utils import flag_goalkeepers
+    return flag_goalkeepers(df, x_col="pos_x", y_col="pos_y")
 
 
 def _canonicalise_coords(

@@ -27,13 +27,14 @@ def compute_block_baselines(
     """Compute per-player baselines from early-match blocks.
 
     Baselines are computed from the first N minutes (default 15 = first 3 blocks)
-    of each player's data in each match. This captures their "fresh" state.
+    of Phase 1 data for each player in each match. This captures their "fresh"
+    state without contamination from second-half fatigue.
 
     Parameters
     ----------
     block_indicators : pd.DataFrame
         Combined per-block indicator values with columns:
-        block_id, player_id, team_id_opta, and indicator columns.
+        block_id, player_id, team_id_opta, phase, and indicator columns.
     config : PressureConfig, optional
     player_col, team_col : str
 
@@ -64,13 +65,18 @@ def compute_block_baselines(
         lambda x: int(x.split("_")[1])
     )
 
-    # Use first N blocks per phase 1 for baseline
-    # (phase 1 blocks have IDs like "1_0", "1_1", etc.)
-    baseline_condition = (block_indicators["block_num"] < n_baseline_blocks)
+    # Use first N blocks of Phase 1 for baseline (FIX H2: added phase filter)
+    baseline_condition = (
+        (block_indicators["phase"] == 1) &
+        (block_indicators["block_num"] < n_baseline_blocks)
+    )
 
     baseline_only = block_indicators[baseline_condition].copy()
     if len(baseline_only) == 0:
-        # Fallback: use all available blocks
+        # Fallback: use all available Phase 1 blocks
+        baseline_only = block_indicators[block_indicators["phase"] == 1].copy()
+    if len(baseline_only) == 0:
+        # Ultimate fallback: use all available blocks
         baseline_only = block_indicators.copy()
 
     records = []
@@ -243,6 +249,7 @@ def build_pressure_dataset(
     reorientation_df: pd.DataFrame,
     transition_df: pd.DataFrame,
     config: Optional[PressureConfig] = None,
+    game_id: str = "",
 ) -> pd.DataFrame:
     """Merge all indicator aggregations into a unified pressure dataset.
 
@@ -259,6 +266,8 @@ def build_pressure_dataset(
     transition_df : pd.DataFrame
         Transition counts per block (from transitions).
     config : PressureConfig, optional
+    game_id : str
+        Match identifier to include in output (FIX H1).
 
     Returns
     -------
@@ -321,5 +330,8 @@ def build_pressure_dataset(
             merged["transition_count"] / block_minutes,
             0.0,
         )
+
+    # FIX H1: Add game_id column
+    merged["game_id"] = game_id
 
     return merged.sort_values(["player_id", "block_id"]).reset_index(drop=True)

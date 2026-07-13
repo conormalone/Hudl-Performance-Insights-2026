@@ -15,16 +15,19 @@ from scipy.spatial.distance import cdist
 from .config import PressureConfig, DEFAULT_CONFIG
 
 
+from .gk_utils import flag_goalkeepers
+
 def _flag_goalkeepers(df: pd.DataFrame) -> set:
     """Identify goalkeeper (player_id, team_id_opta) pairs.
 
-    Heuristic: jersey_no == 1 AND mean abs(x) > 45 (near goal line).
+    Delegates to the shared gk_utils.flag_goalkeepers for consistent
+    detection across all Model 1 modules (H3 fix).
     """
+    is_gk = flag_goalkeepers(df)
     gk_set = set()
-    for (pid, tid), grp in df.groupby(["player_id", "team_id_opta"]):
-        jersey = grp["jersey_no"].iloc[0]
-        if jersey == 1 and abs(grp["x"].mean()) > 45:
-            gk_set.add((pid, int(tid)))
+    gk_rows = df[is_gk]
+    for _, row in gk_rows.iterrows():
+        gk_set.add((int(row["player_id"]), int(row["team_id_opta"])))
     return gk_set
 
 

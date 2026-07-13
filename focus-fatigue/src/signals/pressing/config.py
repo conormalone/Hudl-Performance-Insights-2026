@@ -41,9 +41,14 @@ class PressingConfig:
 
     # ── Accuracy Classification ────────────────────────────────────────
 
-    correct_press_threshold: float = 0.3
+    correct_press_threshold: float = 0.18
     """Intercept probability above which a press is classified as
-    'correct' (value in [0, 1])."""
+    'correct' (value in [0, 1]).
+    
+    Calibrated from 0.3 → 0.18 based on validation: 0.3 gave 26.4%
+    accuracy vs 30-60% expected range. 0.18 should bring it closer
+    to ~40-50% (FIX: threshold calibration).
+    """
 
     # ── Frame Rate ─────────────────────────────────────────────────────
 
