@@ -59,7 +59,7 @@ import pandas as pd
 # ── Default Paths ───────────────────────────────────────────────────────────
 
 _TEAM_MAPPINGS_PATH = Path(
-    "/home/conormalone/conor_downloads/team_mappings/team_mappings.csv"
+    "/mnt/usb/conor_downloads/team_mappings/team_mappings.csv"
 )
 
 
@@ -119,6 +119,8 @@ class ShapeWindow:
         Roles for the out-of-possession team state.
     in_possession : list[ShapeRole]
         Roles for the in-possession team state.
+    team_uuid : str
+        UUID of the team this shape window belongs to.
     """
 
     minute_window: int
@@ -128,6 +130,7 @@ class ShapeWindow:
     formation_in: str
     out_of_possession: list[ShapeRole]
     in_possession: list[ShapeRole]
+    team_uuid: str = ""
 
 
 @dataclass
@@ -343,6 +346,81 @@ def _parse_v2_shapes(raw: dict) -> list[ShapeWindow]:
     return windows
 
 
+def _parse_v1_contestant_shapes(
+    contestant: dict,
+    period_id: int,
+    team_uuid: str,
+) -> list[ShapeWindow]:
+    """Parse V1 shape entries for a single contestant with their team UUID.
+
+    Parameters
+    ----------
+    contestant : dict
+        A single contestant entry from ``liveData.shapes[].contestant[]``.
+    period_id : int
+        Match period (1 or 2).
+    team_uuid : str
+        UUID of this contestant's team.
+
+    Returns
+    -------
+    list[ShapeWindow]
+        Parsed shape windows for this contestant with team_uuid set.
+    """
+    windows: list[ShapeWindow] = []
+    for state_key in ("inPossession", "outOfPossession"):
+        state_data = contestant.get(state_key, {})
+        shape_list = state_data.get("shape", [])
+
+        for shape_entry in shape_list:
+            period_start = shape_entry.get("periodStart", "00:00")
+            # Parse minutes from MM:SS
+            parts_s = period_start.split(":")
+            minute_start = int(parts_s[0]) + (period_id - 1) * 45
+
+            roles_raw = (
+                shape_entry.get("shapeRole", {}).get("role", [])
+            )
+
+            roles = [
+                ShapeRole(
+                    role_id=r.get("id", ""),
+                    role_name=r.get("roleDescription", ""),
+                    jersey_no=int(r.get("shirtNumber", 0)),
+                    player_uuid=r.get("playerId", ""),
+                    avg_x=_shape_x(float(r.get("averageRolePositionX", 0.0))),
+                    avg_y=_shape_y(float(r.get("averageRolePositionY", 0.0))),
+                    fit_score=float(r.get("fitScore", 0.0)),
+                )
+                for r in roles_raw
+            ]
+
+            if state_key == "outOfPossession":
+                oop_roles, ip_roles = roles, []
+            else:
+                oop_roles, ip_roles = [], roles
+
+            windows.append(
+                ShapeWindow(
+                    minute_window=minute_start,
+                    at_time="",
+                    phase=period_id,
+                    formation_out=(
+                        shape_entry.get("formation", "")
+                        if state_key == "outOfPossession" else ""
+                    ),
+                    formation_in=(
+                        shape_entry.get("formation", "")
+                        if state_key == "inPossession" else ""
+                    ),
+                    out_of_possession=oop_roles,
+                    in_possession=ip_roles,
+                    team_uuid=team_uuid,
+                )
+            )
+    return windows
+
+
 def _parse_v1_shapes(raw: dict, match_start: Optional[datetime]) -> list[ShapeWindow]:
     """Parse the V1 shape format (``liveData.shapes[].contestant[]``).
 
@@ -359,7 +437,7 @@ def _parse_v1_shapes(raw: dict, match_start: Optional[datetime]) -> list[ShapeWi
     Returns
     -------
     list[ShapeWindow]
-        Parsed shape windows sorted by minute.
+        Parsed shape windows sorted by minute, with team_uuid populated.
     """
     windows: list[ShapeWindow] = []
     shapes = raw.get("liveData", {}).get("shapes", [])
@@ -374,73 +452,14 @@ def _parse_v1_shapes(raw: dict, match_start: Optional[datetime]) -> list[ShapeWi
         if not contestant_list:
             continue
 
-        # V1 format has shapes per contestant — we need team UUID context.
-        # We extract the shape windows but don't assign a team here.
-        # The team assignment happens in `build_player_role_map`.
-        # For now, we build windows keyed by period + time range.
-
-        # Parse the increment to determine minute window
-        increment_str = entry.get("increment", "60 Seconds")
-        # We'll use the first contestant to extract time info
-        # since all contestants share the same time windows
         for contestant in contestant_list:
-            for state_key in ("inPossession", "outOfPossession"):
-                state_data = contestant.get(state_key, {})
-                shape_list = state_data.get("shape", [])
-
-                for shape_entry in shape_list:
-                    period_start = shape_entry.get("periodStart", "00:00")
-                    period_end = shape_entry.get("periodEnd", "05:00")
-
-                    # Parse minutes from MM:SS
-                    parts_s = period_start.split(":")
-                    minute_start = int(parts_s[0]) + (period_id - 1) * 45
-
-                    roles_raw = (
-                        shape_entry.get("shapeRole", {}).get("role", [])
-                    )
-
-                    roles = [
-                        ShapeRole(
-                            role_id=r.get("id", ""),
-                            role_name=r.get("roleDescription", ""),
-                            jersey_no=int(r.get("shirtNumber", 0)),
-                            player_uuid=r.get("playerId", ""),
-                            avg_x=_shape_x(float(r.get("averageRolePositionX", 0.0))),
-                            avg_y=_shape_y(float(r.get("averageRolePositionY", 0.0))),
-                            fit_score=float(r.get("fitScore", 0.0)),
-                        )
-                        for r in roles_raw
-                    ]
-
-                    # In V1, the shape entry can be either in-possession
-                    # or out-of-possession. Wrap it appropriately.
-                    if state_key == "outOfPossession":
-                        oop_roles = roles
-                        ip_roles = []
-                    else:
-                        oop_roles = []
-                        ip_roles = roles
-
-                    windows.append(
-                        ShapeWindow(
-                            minute_window=minute_start,
-                            at_time="",
-                            phase=period_id,
-                            formation_out=(
-                                shape_entry.get("formation", "")
-                                if state_key == "outOfPossession"
-                                else ""
-                            ),
-                            formation_in=(
-                                shape_entry.get("formation", "")
-                                if state_key == "inPossession"
-                                else ""
-                            ),
-                            out_of_possession=oop_roles,
-                            in_possession=ip_roles,
-                        )
-                    )
+            cid = contestant.get("id", "")
+            # Map contestant id to team UUID
+            # In V1 format, the contestant id in liveData.shapes IS the team UUID
+            team_uuid = cid
+            windows.extend(
+                _parse_v1_contestant_shapes(contestant, period_id, team_uuid)
+            )
 
     windows.sort(key=lambda w: w.minute_window)
     return windows
@@ -649,14 +668,16 @@ def build_player_role_map(
 
         # For each minute window with shape data
         for minute_win, win_list in windows_by_minute.items():
-            # Find the shape window for our team
-            # In V2 format, both teams' roles are in the same window
-            # In V1 format, each contestant has their own shape entries
+            # Filter to shape windows belonging to this player's team.
+            # Fallback for V2 shapes (team_uuid=""): try ALL windows for
+            # this minute — jersey-number matching selects the right team.
+            team_wins = [w for w in win_list if w.team_uuid == team_uuid]
+            candidate_wins = team_wins if team_wins else win_list
             matched_role: Optional[ShapeRole] = None
             formation = ""
             phase = 0
 
-            for win in win_list:
+            for win in candidate_wins:
                 # Try out-of-possession roles first (primary use case)
                 for role in win.out_of_possession:
                     if role.jersey_no == jersey and role.fit_score >= min_fit_score:

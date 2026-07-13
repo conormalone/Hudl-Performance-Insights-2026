@@ -265,7 +265,10 @@ def classify_transition_type(
             types.append("unknown")
             continue
 
-        speed = np.sqrt(bvx**2 + bvy**2) * frames_per_second
+        # Velocity is in m/s after smoothing.py np.gradient/dt conversion.
+        # Do NOT multiply by frames_per_second — that would inflate values 25x
+        # and incorrectly classify nearly all transitions as "surprise".
+        speed = np.sqrt(bvx**2 + bvy**2)
 
         if speed <= surprise_speed_threshold:
             types.append("expected")

@@ -77,7 +77,7 @@ def classify_pressing_accuracy(
 
 def aggregate_pressing_by_block(
     df: pd.DataFrame,
-    blocks: list[dict],
+    blocks: list[pd.DataFrame],
     config: PressingConfig,
     *,
     game_id: str = "",
@@ -106,10 +106,9 @@ def aggregate_pressing_by_block(
         Output of :func:`classify_pressing_accuracy`, containing columns:
         ``frame_count``, ``player_id``, ``is_pressing``,
         ``is_correct_press``, ``intercept_probability``, ``tti_value``.
-    blocks : list[dict]
-        Block definitions. Each dict must contain keys:
-        ``block_id`` (str), ``phase`` (int), ``start_frame`` (int),
-        ``end_frame`` (int).
+    blocks : list of pd.DataFrame
+        Block-segmented tracking data from :func:`split_into_blocks`.
+        Each DataFrame has a ``block_id`` column and ``frame_count``.
     config : PressingConfig
         Configuration (used for frame rate reference in future
         time-based metrics; reserved for consistency).
@@ -140,14 +139,18 @@ def aggregate_pressing_by_block(
             f"Input DataFrame missing required columns: {missing}"
         )
 
-    # ── Build block membership lookup ──────────────────────────────────
+    # ── Build block membership lookup from DataFrame blocks ────────────
     block_records: list[dict] = []
     for block in blocks:
+        bid = str(block["block_id"].iloc[0])
+        phase = int(bid.split("_")[0])
+        start_frame = int(block["frame_count"].min())
+        end_frame = int(block["frame_count"].max())
         block_records.append({
-            "block_id": block["block_id"],
-            "phase": block["phase"],
-            "start_frame": block["start_frame"],
-            "end_frame": block["end_frame"],
+            "block_id": bid,
+            "phase": phase,
+            "start_frame": start_frame,
+            "end_frame": end_frame,
         })
 
     block_df = pd.DataFrame(block_records)

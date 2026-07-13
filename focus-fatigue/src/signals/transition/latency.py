@@ -350,7 +350,7 @@ BALL_PLAYER_ID = -1
 
 def aggregate_latency_by_block(
     latency_df: pd.DataFrame,
-    blocks: list[dict],
+    blocks: list[pd.DataFrame],
     config: TransitionConfig,
     game_id: str = "",
 ) -> pd.DataFrame:
@@ -373,8 +373,9 @@ def aggregate_latency_by_block(
         Output from :func:`compute_reaction_time`. Must contain columns
         ``transition_id``, ``player_id``, ``team_id_opta``,
         ``reaction_time_s``, ``valid``.
-    blocks : list of dict
-        Each dict has ``block_id``, ``phase``, ``start_frame``, ``end_frame``.
+    blocks : list of pd.DataFrame
+        Block-segmented tracking data from :func:`split_into_blocks`.
+        Each DataFrame has a ``block_id`` column and ``frame_count`` column.
     config : TransitionConfig
         Configuration object (used for frame rate consistency).
     game_id : str
@@ -402,12 +403,14 @@ def aggregate_latency_by_block(
         })
         return empty
 
-    # Build a frame → block_id mapping from blocks
+    # Build a frame → block_id mapping from DataFrame blocks
     frame_to_block: dict[int, tuple[str, int]] = {}
     for blk in blocks:
-        bid = blk["block_id"]
-        phase = blk["phase"]
-        for f in range(blk["start_frame"], blk["end_frame"] + 1):
+        bid = str(blk["block_id"].iloc[0])
+        phase = int(blk["block_id"].iloc[0].split("_")[0])
+        start_frame = int(blk["frame_count"].min())
+        end_frame = int(blk["frame_count"].max())
+        for f in range(start_frame, end_frame + 1):
             frame_to_block[f] = (bid, phase)
 
     # We need to map each transition to a block.
@@ -472,11 +475,11 @@ def aggregate_latency_by_block(
     # Build standard output
     output_records = []
     for _, row in agg.iterrows():
-        # Use the block's frame range for n_frames
+        # Use the block's frame count for n_frames
         block_frames = 0
         for blk in blocks:
-            if blk["block_id"] == row["block_id"]:
-                block_frames = blk.get("end_frame", 0) - blk.get("start_frame", 0)
+            if str(blk["block_id"].iloc[0]) == row["block_id"]:
+                block_frames = len(blk)
                 break
 
         output_records.append({

@@ -90,9 +90,13 @@ def _canonicalise_coords(
     if not normalise_dop:
         return df
 
-    # Get DOP direction per frame from the ball
-    ball_dop = (
-        df[df["player_id"] == BALL_PLAYER_ID]
+    # Get DOP direction per frame from all outfield players
+    # Ball rows often have NaN DOP, so use all non-NaN outfield DOP.
+    dop_source = df[
+        (df["player_id"] != BALL_PLAYER_ID) & df["dop"].notna()
+    ]
+    frame_dop = (
+        dop_source
         .groupby("frame_count")["dop"]
         .agg(lambda x: x.mode().iloc[0] if not x.mode().empty else DOP_RIGHT)
         .to_dict()
@@ -100,7 +104,7 @@ def _canonicalise_coords(
 
     # Apply per-frame DOP normalisation
     flip_mask = df["frame_count"].map(
-        lambda f: ball_dop.get(f, DOP_RIGHT) == DOP_LEFT
+        lambda f: frame_dop.get(f, DOP_RIGHT) == DOP_LEFT
     )
 
     df.loc[flip_mask, x_col] *= -1

@@ -161,7 +161,7 @@ def compute_drift(
 
 def aggregate_drift_by_block(
     df: pd.DataFrame,
-    blocks: list[dict[str, Any]],
+    blocks: list[pd.DataFrame],
     config: DriftConfig,
     *,
     game_id: str = "",
@@ -179,12 +179,9 @@ def aggregate_drift_by_block(
         :func:`compute_drift` (or is a subset with drift columns).
         Must contain ``player_id``, ``team_id_opta``, ``drift_m``,
         ``fit_score``, and ``frame`` columns.
-    blocks : list[dict[str, Any]]
-        Block definitions. Each block is a dict with:
-        - ``block_id`` (str) — e.g. ``"block_0"``
-        - ``phase`` (int) — match period (1/2)
-        - ``start_frame`` (int)
-        - ``end_frame`` (int)
+    blocks : list of pd.DataFrame
+        Block-segmented tracking data from :func:`split_into_blocks`.
+        Each DataFrame has a ``block_id`` column and ``frame_count``.
     config : DriftConfig
         Configuration (used for fit-score threshold reference in output).
     game_id : str
@@ -222,10 +219,10 @@ def aggregate_drift_by_block(
     records: list[dict[str, Any]] = []
 
     for b, block in enumerate(blocks):
-        block_id = block.get("block_id", f"block_{b}")
-        phase = block.get("phase", 1)
-        start = block.get("start_frame", 0)
-        end = block.get("end_frame", 0)
+        block_id = str(block["block_id"].iloc[0])
+        phase = int(block_id.split("_")[0])
+        start = int(block["frame"].min())
+        end = int(block["frame"].max())
 
         # Slice to block frames
         block_mask = df["frame"].between(start, end, inclusive="left")

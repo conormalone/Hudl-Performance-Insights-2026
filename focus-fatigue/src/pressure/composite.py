@@ -229,10 +229,17 @@ def classify_pressure_blocks(
     high_thresh = np.percentile(scores, config.high_pressure_quantile * 100)
     low_thresh = np.percentile(scores, config.low_pressure_quantile * 100)
 
-    # Assign quartile
-    quartiles = pd.qcut(scores, q=4, labels=[1, 2, 3, 4], duplicates="drop")
+    # Assign quartile — handle insufficient unique values gracefully
+    n_unique = len(np.unique(scores))
+    n_bins = min(4, n_unique)
+    if n_bins < 1:
+        quartile_labels = np.ones(len(scores), dtype=int)
+    else:
+        quartile_labels = (
+            pd.qcut(scores, q=n_bins, labels=False, duplicates="drop") + 1
+        )
     result["pressure_quartile"] = np.nan
-    result.loc[result["pressure_score"].notna(), "pressure_quartile"] = quartiles
+    result.loc[result["pressure_score"].notna(), "pressure_quartile"] = quartile_labels
 
     # Assign category
     result["pressure_category"] = "medium"

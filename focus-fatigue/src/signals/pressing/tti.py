@@ -154,9 +154,9 @@ def compute_tti(
         # No valid defender-attacker pairs — return empty result
         return pd.DataFrame(
             columns=[
-                "frame_count", "player_id", "closest_attacker_id",
-                "closest_attacker_distance", "tti_value",
-                "intercept_probability",
+                "frame_count", "player_id", "team_id_opta",
+                "closest_attacker_id", "closest_attacker_distance",
+                "tti_value", "intercept_probability",
             ]
         )
 
@@ -175,9 +175,9 @@ def compute_tti(
     if len(pairs) == 0:
         return pd.DataFrame(
             columns=[
-                "frame_count", "player_id", "closest_attacker_id",
-                "closest_attacker_distance", "tti_value",
-                "intercept_probability",
+                "frame_count", "player_id", "team_id_opta",
+                "closest_attacker_id", "closest_attacker_distance",
+                "tti_value", "intercept_probability",
             ]
         )
 
@@ -218,6 +218,7 @@ def compute_tti(
     pairs["distance"] = distance
     pairs["tti_value"] = tti_value
     pairs["intercept_probability"] = intercept_prob
+    pairs["team_id_opta"] = own_team_id
 
     # ── Keep minimum T per defender per frame ──────────────────────────
     idx_min = pairs.groupby(["frame_count", "defender_id"])["tti_value"].idxmin()
@@ -232,8 +233,9 @@ def compute_tti(
     )
 
     output_cols = [
-        "frame_count", "player_id", "closest_attacker_id",
-        "closest_attacker_distance", "tti_value", "intercept_probability",
+        "frame_count", "player_id", "team_id_opta",
+        "closest_attacker_id", "closest_attacker_distance",
+        "tti_value", "intercept_probability",
     ]
 
     return result[output_cols].reset_index(drop=True)

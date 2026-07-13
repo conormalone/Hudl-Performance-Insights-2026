@@ -126,14 +126,20 @@ def compute_opponent_proximity(
         for i in range(len(b_pids)):
             proximity_values[(frame_id, int(b_pids[i]), int(team_b))] = int(counts_b[i])
 
-    # Write back to result DataFrame (vectorized)
-    for (fid, pid, tid), cnt in proximity_values.items():
-        mask = (
-            (result[frame_col] == fid)
-            & (result[player_col] == pid)
-            & (result[team_col] == tid)
+    # Write back to result DataFrame (vectorised merge)
+    if proximity_values:
+        proxy_df = pd.DataFrame(
+            [
+                {frame_col: fid, player_col: pid, team_col: tid, "_opp_val": cnt}
+                for (fid, pid, tid), cnt in proximity_values.items()
+            ]
         )
-        result.loc[mask, "opponents_nearby"] = cnt
+        result = result.merge(
+            proxy_df, on=[frame_col, player_col, team_col], how="left"
+        )
+        fill_mask = result["_opp_val"].notna()
+        result.loc[fill_mask, "opponents_nearby"] = result.loc[fill_mask, "_opp_val"]
+        result = result.drop(columns=["_opp_val"])
 
     return result
 
