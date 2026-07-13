@@ -37,6 +37,15 @@ See Also
 
 from __future__ import annotations
 
+# ── Coordinate Conversion ──────────────────────────────────
+# Shape.json uses 0-100 coords; tracking uses centred metres
+_PITCH_LENGTH = 116.0  # -57 to +59
+_PITCH_WIDTH = 78.0    # -39 to +39
+
+def _shape_x(v): return v / 100.0 * _PITCH_LENGTH - 57.0
+def _shape_y(v): return v / 100.0 * _PITCH_WIDTH - 39.0
+
+
 import csv
 import json
 from dataclasses import dataclass
@@ -294,8 +303,8 @@ def _parse_v2_shapes(raw: dict) -> list[ShapeWindow]:
                     role_name=r.get("roleDisplayName", r.get("roleId", "")),
                     jersey_no=int(r.get("jerseyNo", 0)),
                     player_uuid=r.get("playerUuid", ""),
-                    avg_x=float(r.get("averageRolePositionX", 0.0)),
-                    avg_y=float(r.get("averageRolePositionY", 0.0)),
+                    avg_x=_shape_x(float(r.get("averageRolePositionX", 0.0))),
+                    avg_y=_shape_y(float(r.get("averageRolePositionY", 0.0))),
                     fit_score=float(r.get("fitScore", 0.0)),
                 )
                 for r in oop_roles_raw
@@ -310,8 +319,8 @@ def _parse_v2_shapes(raw: dict) -> list[ShapeWindow]:
                     role_name=r.get("roleDisplayName", r.get("roleId", "")),
                     jersey_no=int(r.get("jerseyNo", 0)),
                     player_uuid=r.get("playerUuid", ""),
-                    avg_x=float(r.get("averageRolePositionX", 0.0)),
-                    avg_y=float(r.get("averageRolePositionY", 0.0)),
+                    avg_x=_shape_x(float(r.get("averageRolePositionX", 0.0))),
+                    avg_y=_shape_y(float(r.get("averageRolePositionY", 0.0))),
                     fit_score=float(r.get("fitScore", 0.0)),
                 )
                 for r in ip_roles_raw
@@ -397,8 +406,8 @@ def _parse_v1_shapes(raw: dict, match_start: Optional[datetime]) -> list[ShapeWi
                             role_name=r.get("roleDescription", ""),
                             jersey_no=int(r.get("shirtNumber", 0)),
                             player_uuid=r.get("playerId", ""),
-                            avg_x=float(r.get("averageRolePositionX", 0.0)),
-                            avg_y=float(r.get("averageRolePositionY", 0.0)),
+                            avg_x=_shape_x(float(r.get("averageRolePositionX", 0.0))),
+                            avg_y=_shape_y(float(r.get("averageRolePositionY", 0.0))),
                             fit_score=float(r.get("fitScore", 0.0)),
                         )
                         for r in roles_raw
