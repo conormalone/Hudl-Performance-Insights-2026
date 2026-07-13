@@ -214,13 +214,13 @@ def main():
     )
     parser.add_argument(
         "--sample-dir", type=str,
-        default="/home/conormalone/conor_downloads/team_mappings/sample",
-        help="Sample data directory"
+        default="./data/raw/tracking/sample",
+        help="Sample data directory (default: ./data/raw/tracking/sample)"
     )
     parser.add_argument(
         "--tracking-dir", type=str,
-        default="/home/conormalone/conor_downloads/team_mappings/tracking",
-        help="Full tracking data directory"
+        default="./data/raw/tracking",
+        help="Full tracking data directory (default: ./data/raw/tracking)"
     )
     args = parser.parse_args()
 

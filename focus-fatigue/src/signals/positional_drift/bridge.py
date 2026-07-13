@@ -59,7 +59,7 @@ import pandas as pd
 # ── Default Paths ───────────────────────────────────────────────────────────
 
 _TEAM_MAPPINGS_PATH = Path(
-    "/mnt/usb/conor_downloads/team_mappings/team_mappings.csv"
+    "./data/raw/team_mappings/team_mappings.csv"
 )
 
 

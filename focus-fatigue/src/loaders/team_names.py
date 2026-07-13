@@ -15,31 +15,46 @@ import json
 
 import pandas as pd
 
-# Load team UUID → Opta ID mapping
-_TEAM_MAP_PATH = Path(
-    "/home/conormalone/conor_downloads/team_mappings/team_mappings.csv"
-)
+# Default team mapping path (relative to project root)
+_DEFAULT_TEAM_MAP_PATH = Path("./data/raw/team_mappings/team_mappings.csv")
 
 
-def _load_team_uuid_to_opta() -> dict[str, int]:
-    """Load the UUID → Opta ID mapping from CSV."""
+def _load_team_uuid_to_opta(path: Path | None = None) -> dict[str, int]:
+    """Load the UUID → Opta ID mapping from CSV.
+
+    Parameters
+    ----------
+    path : Path or None
+        Path to the team_mappings.csv file. Falls back to
+        ``_DEFAULT_TEAM_MAP_PATH`` if None.
+    """
     import csv
 
+    resolve_path = path or _DEFAULT_TEAM_MAP_PATH
+
     mapping = {}
-    if _TEAM_MAP_PATH.exists():
-        with open(_TEAM_MAP_PATH) as f:
+    if resolve_path.exists():
+        with open(resolve_path) as f:
             for row in csv.DictReader(f):
                 mapping[row["uuid"]] = int(row["opta_id"])
     return mapping
 
 
-def _load_opta_to_uuid() -> dict[int, str]:
-    """Reverse mapping: Opta ID → UUID."""
-    return {v: k for k, v in _load_team_uuid_to_opta().items()}
+def _load_opta_to_uuid(path: Path | None = None) -> dict[int, str]:
+    """Reverse mapping: Opta ID → UUID.
+
+    Parameters
+    ----------
+    path : Path or None
+        Path to the team_mappings.csv file. Falls back to
+        ``_DEFAULT_TEAM_MAP_PATH`` if None.
+    """
+    return {v: k for k, v in _load_team_uuid_to_opta(path=path).items()}
 
 
 def build_team_name_cache(
     shape_dir: Union[str, Path],
+    team_mappings_path: Optional[Union[str, Path]] = None,
 ) -> dict[int, str]:
     """Build a cache of team_id_opta → team name from all shape files.
 
@@ -47,6 +62,8 @@ def build_team_name_cache(
     ----------
     shape_dir : str or Path
         Directory containing all shape.json files.
+    team_mappings_path : str or Path, optional
+        Path to team_mappings.csv. Falls back to ``_DEFAULT_TEAM_MAP_PATH``.
 
     Returns
     -------
@@ -54,7 +71,9 @@ def build_team_name_cache(
         {team_id_opta: "Team Name"}
     """
     shape_dir = Path(shape_dir)
-    uuid_to_opta = _load_team_uuid_to_opta()
+    uuid_to_opta = _load_team_uuid_to_opta(
+        path=Path(team_mappings_path) if team_mappings_path else None
+    )
     result = {}
 
     for sf in sorted(shape_dir.glob("*.json")):
@@ -93,9 +112,7 @@ def get_team_name(
         Team name, or f"Team-{team_id_opta}" if not found.
     """
     if cache is None:
-        shape_dir = Path(
-            "/home/conormalone/conor_downloads/team_mappings/shape_outputs"
-        )
+        shape_dir = Path("./data/raw/shapes")
         cache = build_team_name_cache(shape_dir)
 
     return cache.get(team_id_opta, f"Team-{team_id_opta}")

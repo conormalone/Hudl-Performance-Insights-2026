@@ -58,11 +58,11 @@ class PressureConfig:
     """Blocks below this quantile are classified as low pressure (control)."""
 
     # --- Paths ---
-    sample_dir: str = "/home/conormalone/conor_downloads/team_mappings/sample"
+    sample_dir: str = "./data/raw/tracking/sample"
     """Directory containing sample match tracking data."""
-    tracking_dir: str = "/home/conormalone/conor_downloads/team_mappings/tracking"
+    tracking_dir: str = "./data/raw/tracking"
     """Directory containing all match tracking data."""
-    output_dir: str = "/mnt/usb/project/focus-fatigue/outputs/pressure_exposure"
+    output_dir: str = "./outputs/pressure_exposure"
     """Output directory for results."""
 
     # --- Frame Rate ---
