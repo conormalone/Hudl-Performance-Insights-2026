@@ -1,0 +1,43 @@
+# Focus Fatigue — .gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+
+# Virtual environment
+venv/
+.venv/
+
+# Data (large, downloaded, or sensitive)
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# Outputs (generated)
+outputs/*.csv
+outputs/*.parquet
+outputs/*.png
+outputs/*.pdf
+
+# Notebooks checkpoints
+.ipynb_checkpoints/
+
+# Jupyter
+.jupyter/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+*.orig
