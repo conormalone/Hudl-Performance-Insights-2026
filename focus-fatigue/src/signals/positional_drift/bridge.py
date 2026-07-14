@@ -187,7 +187,7 @@ def load_team_mappings(
     opta_to_uuid : dict[int, str]
         Reverse map of Opta team ID → UUID string.
     """
-    path = Path(path) if path else _TEAM_MAPPINGS_PATH
+    path = Path(path) if path else Path(_TEAM_MAPPINGS_PATH)
 
     uuid_to_opta: dict[str, int] = {}
     opta_to_uuid: dict[int, str] = {}

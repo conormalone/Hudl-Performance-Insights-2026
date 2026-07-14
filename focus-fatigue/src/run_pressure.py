@@ -99,8 +99,20 @@ def process_one_match(
     df = smooth_trajectory(df, inplace=False)
     df = compute_velocity_features(df)
 
-    # Step 3: Segment into blocks
-    print("  [3/8] Segmenting into blocks...")
+    # Step 3: Compute opponent proximity (before segmentation — adds per-frame column)
+    print("  [3/8] Computing opponent proximity...")
+    df = compute_opponent_proximity(df, radius=config.opponent_radius, config=config)
+
+    # Step 4: Compute defensive depth (before segmentation — adds per-frame column)
+    print("  [4/8] Computing defensive depth...")
+    df = compute_defensive_depth(df, goal_line_x=config.goal_line_x, config=config)
+
+    # Step 5: Detect reorientations (before segmentation — adds per-frame column)
+    print("  [5/8] Detecting reorientations...")
+    df = detect_reorientations(df, config=config)
+
+    # Step 6: Segment into blocks
+    print("  [6/8] Segmenting into blocks...")
     blocks = split_into_blocks(
         df,
         window_minutes=config.block_window_minutes,
@@ -109,19 +121,9 @@ def process_one_match(
     summary = block_summary(blocks)
     print(f"         {len(blocks)} blocks, {len(summary)} valid")
 
-    # Step 4: Compute opponent proximity
-    print("  [4/8] Computing opponent proximity...")
-    df = compute_opponent_proximity(df, radius=config.opponent_radius, config=config)
+    # Aggregate per-frame indicators to blocks
     proximity_agg = aggregate_opponent_proximity_to_blocks(blocks, config=config)
-
-    # Step 5: Compute defensive depth
-    print("  [5/8] Computing defensive depth...")
-    df = compute_defensive_depth(df, goal_line_x=config.goal_line_x, config=config)
     depth_agg = aggregate_defensive_depth_to_blocks(blocks, config=config)
-
-    # Step 6: Detect reorientations
-    print("  [6/8] Detecting reorientations...")
-    df = detect_reorientations(df, config=config)
     reo_agg = aggregate_reorientations_to_blocks(blocks, config=config)
 
     # Step 7: Detect transitions

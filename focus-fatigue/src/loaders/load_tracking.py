@@ -119,6 +119,7 @@ def load_tracking_statsperform(
     normalise_dop: bool = True,
     include_ball: bool = True,
     columns: Optional[list[str]] = None,
+    nrows: Optional[int] = None,
 ) -> pd.DataFrame:
     """Load a Stats Perform tracking.parquet file.
 
@@ -134,6 +135,9 @@ def load_tracking_statsperform(
         If False, filter out ball rows (player_id == -1).
     columns : list of str, optional
         Subset of columns to return. If None, returns all output columns.
+    nrows : int, optional
+        If set, only load the first N rows of the parquet file.
+        Useful for quick smoke tests without loading full matches.
 
     Returns
     -------
@@ -149,6 +153,8 @@ def load_tracking_statsperform(
 
     # Read raw parquet
     df = pd.read_parquet(filepath)
+    if nrows is not None:
+        df = df.head(nrows)
     df = _normalise_dtype(df)
 
     # Rename columns to output schema
@@ -216,6 +222,9 @@ def load_tracking_by_match(
         tracking.parquet inside.
     match_ids : list of str, optional
         Subset of match IDs to load. If None, loads all.
+    **kwargs
+        Passed through to :func:`load_tracking_statsperform`.
+        Supports ``nrows``, ``normalise_dop``, ``include_ball``, etc.
 
     Returns
     -------

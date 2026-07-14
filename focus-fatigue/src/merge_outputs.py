@@ -133,10 +133,10 @@ def load_pressure_data(
         return pd.DataFrame()
 
     combined = pd.concat(frames, ignore_index=True)
-    # Standardise types for merge
+    # Standardise types for merge (handle NaN safely)
     for col in ["player_id", "team_id_opta"]:
         if col in combined.columns:
-            combined[col] = combined[col].astype(int)
+            combined[col] = combined[col].fillna(-1).astype(int)
 
     return combined
 

@@ -222,7 +222,7 @@ class PositionalDriftSignal(SignalBase):
         - ``signal_value`` (mean drift) is non-negative (distance).
         - Values are within a plausible range (< max_plausible_drift_m).
         - ``drift_p90`` >= ``signal_value`` (statistical sanity).
-        - ``mean_fit_score`` is in [0, 1] when present.
+        - ``mean_fit_score`` >= 0 when present (values above 1.0 are warned, not rejected).
 
         Parameters
         ----------
@@ -276,11 +276,19 @@ class PositionalDriftSignal(SignalBase):
 
         if "mean_fit_score" in output_df.columns:
             mfs = output_df["mean_fit_score"].dropna()
-            if len(mfs) > 0 and (mfs.min() < 0.0 or mfs.max() > 1.0):
-                raise ValueError(
-                    f"mean_fit_score must be in [0, 1], "
-                    f"got range [{mfs.min():.3f}, {mfs.max():.3f}]"
-                )
+            if len(mfs) > 0:
+                if mfs.min() < 0.0:
+                    raise ValueError(
+                        f"mean_fit_score contains negative values "
+                        f"(min={mfs.min():.3f}). Fit scores cannot be negative."
+                    )
+                if mfs.max() > 1.0:
+                    self.logger.warning(
+                        "mean_fit_score exceeds 1.0 for %d rows "
+                        "(max={:.3f}). Stats Perform fit scores can exceed 1.0 — "
+                        "this is expected and not a validation failure.".format(mfs.max()),
+                        int((mfs > 1.0).sum()),
+                    )
 
         return True
 
