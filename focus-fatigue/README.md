@@ -1,364 +1,96 @@
 # Focus Fatigue — Cognitive Fatigue Detection in Football Defence
 
-Detect cognitive fatigue in football defenders using optical tracking data.
-The project computes **Model 1 (Pressure Exposure)** and **5 defensive-quality
-signals** on per-block, per-player basis, then merges everything into a
-unified dataset for analysis.
+Detect cognitive fatigue in football defenders using optical tracking data
+(Stats Perform, 25fps). Computes **Model 1 (Pressure Exposure)** and
+**4 defensive-quality signals** on per-block, per-player basis, then merges
+everything into a unified dataset.
 
-## Table of Contents
-
-1. [What It Does](#what-it-does)
-2. [Data Requirements](#data-requirements)
-3. [Installation](#installation)
-4. [Configuration](#configuration)
-5. [How to Run](#how-to-run)
-6. [Output Structure](#output-structure)
-7. [Module Tree](#module-tree)
-
----
-
-## What It Does
-
-### Model 1 — Pressure Exposure
-
-Four load indicators computed from optical tracking data:
-
-| Indicator | Description |
-|-----------|-------------|
-| **Opponent Proximity** | Number of opponents within a 7m radius of each defender |
-| **Defensive Depth** | Distance from each defender to their own goal line |
-| **Reorientations** | Sharp heading changes (≥45°) — a proxy for scanning |
-| **Zone Transitions** | Movement between defensive zones during possession changes |
-
-These are combined into a **Pressure Composite** that classifies each
-player-block as **high pressure**, **normal**, or **low pressure**.
-
-### Model 2 — Defensive Quality Signals
-
-| Signal | Description |
-|--------|-------------|
-| **Positional Drift** | Mean distance (m) from expected role centroid during out-of-possession — measures spatial awareness degradation |
-| **Shift Latency** | Mean reaction time (s) to sudden triggers (ball speed spikes, opponent runs) — measures perceptual-motor delay |
-| **Pressing Accuracy** | Fraction of pressing actions classified as "correct" using Bekkers Time-To-Intercept — measures decision quality |
-| **Transition Latency** | Mean reaction time (s) to possession turnovers — measures cognitive recognition delay |
-
-### Hypothesis
-
-As defenders experience cognitive fatigue:
-
-- **Positional drift increases** (worse spatial awareness)
-- **Reaction latencies increase** (slower cognitive processing)
-- **Pressing accuracy decreases** (worse decision-making)
-- **Pressure exposure changes** (altered defensive behaviour)
-
----
-
-## Data Requirements
-
-### Directory Structure
-
-```
-project-root/
-├── data/
-│   └── raw/
-│       ├── tracking/
-│       │   ├── {match_id}/
-│       │   │   └── tracking.parquet    # Optical tracking data
-│       │   ├── sample/                  # (optional) Sample subset
-│       │   │   └── {match_id}/
-│       │   │       └── tracking.parquet
-│       ├── shapes/
-│       │   └── {match_id}.json          # Shape model files (for positional drift)
-│       ├── team_mappings/
-│       │   └── team_mappings.csv        # UUID → Opta ID mapping
-│       └── shape_outputs/               # Legacy V1 shape files
-│           └── *.json
-├── outputs/
-│   ├── pressure_exposure/               # Model 1 results
-│   └── signals/                         # Signal results
-│       ├── positional_drift/
-│       ├── shift_latency/
-│       ├── pressing_accuracy/
-│       └── transition_latency/
-└── src/
-    └── ...
-```
-
-### Data Format
-
-**Tracking data** (`tracking.parquet`):
-
-Stats Perform optical tracking at **25 fps** with DOP-normalised pitch
-coordinates (x: -57 to +59 m, y: -39 to +39 m). Required columns:
-
-- `current_phase` — match period (1, 2, …)
-- `timeelapsed` — time in seconds
-- `team_id_opta` — Stats Perform team ID
-- `player_id` — player identifier (int)
-- `jersey_no` — shirt number
-- `pos_x`, `pos_y` — pitch coordinates
-- `speed`, `speed_x`, `speed_y` — velocity
-- `frame_count` — frame number (0-based, 25 fps)
-- `dop` — direction of play ("L" / "R")
-- `team_in_possession` — which team has the ball
-
-**Shape files** (for positional drift):
-
-Stats Perform shape.json files with `averageRolePositionX/Y` at ~1-minute
-resolution. Supports both **V1** (legacy `liveData.shapes[]`) and **V2**
-(canonical `periods[].shapes[].atTime`) formats.
-
-**Team mappings** (`team_mappings.csv`):
-
-Two-column CSV mapping `uuid` → `opta_id` to bridge between shape file
-team UUIDs and tracking data Opta IDs.
-
----
-
-## Installation
+## Quick Start
 
 ```bash
-# 1. Clone the repository
-git clone <repo-url> focus-fatigue
-cd focus-fatigue
-
-# 2. Create a virtual environment
-python3 -m venv .venv
-source .venv/bin/activate
-
-# 3. Install dependencies
-pip install -e .        # installs from pyproject.toml
-# OR use the lightweight requirements:
 pip install -r requirements.txt
-
-# 4. Smoke test imports
-python3 -c "from src.run_signals import main; print('✅ OK')"
-python3 -c "from src.run_pipeline import main; print('✅ OK')"
+python3 src/pipeline.py --sample  # runs on 3 sample matches
+python3 src/pipeline.py --match 2215790 --nrows 5000  # test on one match
+python3 src/pipeline.py --list-signals
 ```
 
----
+Or use the notebook: `notebooks/pipeline.ipynb` — sets `DATA_ROOT`, calls the same pipeline functions.
 
-## Configuration
+## File-by-File Purpose
 
-Edit `src/pressure/config.py` to set data paths, or use the CLI arguments:
+### `/src` — Library code
 
-```bash
-# Override tracking directory
-python3 src/run_signals.py --all --tracking-dir /path/to/tracking
+| File | Purpose |
+|------|---------|
+| `loaders.py` | Load tracking.parquet files and team_mappings.csv |
+| `smoothing.py` | Savitzky-Golay trajectory smoothing + velocity/heading features |
+| `segments.py` | Split match into 5-minute time blocks |
+| `pipeline.py` | **Single entry point**: Model 1 → Signals → Merge |
+| `merge_outputs.py` | Merge all CSVs into unified `unified_fatigue_dataset.parquet` |
+| `pressure/config.py` | All Model 1 tuning parameters (dataclass) |
+| `pressure/gk_utils.py` | Goalkeeper detection heuristic (shared) |
+| `pressure/opponent_proximity.py` | Indicator 1: count opponents within 7m |
+| `pressure/defensive_depth.py` | Indicator 2: distance from own goal line |
+| `pressure/reorientations.py` | Indicator 3: sharp heading changes ≥45° |
+| `pressure/transitions.py` | Indicator 4: possession flips in defender's zone |
+| `pressure/composite.py` | Combine 4 indicators → pressure score → classification |
+| `signals/__init__.py` | Re-exports for the signal framework |
+| `signals/base.py` | `SignalBase` — abstract class all signals inherit from |
+| `signals/config.py` | Signal framework config (output paths) |
+| `signals/registry.py` | `@register_signal` decorator + lookup by name |
+| `signals/output_schema.py` | Standardised output columns + validation |
+| `signals/drift.py` | **Signal 1**: positional drift from shape-model centroids |
+| `signals/shift.py` | **Signal 2**: reaction latency to ball spikes + opponent runs |
+| `signals/pressing.py` | **Signal 3**: pressing accuracy via Bekkers Time-To-Intercept |
+| `signals/transition.py` | **Signal 5**: reaction latency to possession turnovers |
 
-# Override output directory (via env var or config)
-```
+### `/notebooks`
 
-Key configuration in `src/pressure/config.py`:
+| File | Purpose |
+|------|---------|
+| `pipeline.ipynb` | Thin runner — sets paths, calls `src.pipeline` functions |
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `tracking_dir` | `./data/raw/tracking` | Directory containing match subdirectories |
-| `sample_dir` | `./data/raw/tracking/sample` | Sample data directory |
-| `output_dir` | `./outputs/pressure_exposure` | Model 1 output directory |
-| `block_window_minutes` | 5 | Duration of each analysis block |
-| `opponent_radius` | 7.0 | Radius (m) for opponent proximity |
+### `/outputs`
 
-Signal configuration in `src/signals/config.py`:
+| Path | Contents |
+|------|----------|
+| `pressure_exposure/pressure_composite_{match_id}.csv` | Model 1 per-block results |
+| `pressure_exposure/pressure_indicators_{match_id}.csv` | Raw indicator values |
+| `signals/{signal_name}/{match_id}.csv` | Per-block signal values |
+| `unified_fatigue_dataset.parquet` | All signals + pressure merged |
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `output_root` | `outputs/signals` | Root directory for signal outputs |
-
----
-
-## How to Run
-
-### Quick Start
-
-```bash
-# Run everything: Model 1 + all signals + merge
-python3 src/run_pipeline.py --all
-
-# Test on a single match with limited rows
-python3 src/run_pipeline.py --match 2215790 --nrows 5000
-```
-
-### Individual Commands
-
-```bash
-# List available signals
-python3 src/run_signals.py --list
-
-# Run all signals on all matches
-python3 src/run_signals.py --all
-
-# Run a single signal on all matches
-python3 src/run_signals.py --signal transition_latency --all
-
-# Run signals on one match (for development)
-python3 src/run_signals.py --match 2215790
-
-# Run signals with limited rows (for testing)
-python3 src/run_signals.py --match 2215790 --nrows 5000
-```
-
-```bash
-# Model 1 only
-python3 src/run_pressure.py --all
-python3 src/run_pressure.py --match 2215790
-```
-
-```bash
-# Merge outputs separately (after running Model 1 and signals)
-python3 src/merge_outputs.py
-```
-
-### Order of Operations
-
-1. **Model 1** creates `outputs/pressure_exposure/pressure_composite_{match_id}.csv`
-2. **Signals** create `outputs/signals/{signal_name}/{match_id}.csv`
-3. **Merge** joins everything into `outputs/unified_fatigue_dataset.parquet`
-
----
-
-## Output Structure
+## Data Flow
 
 ```
-outputs/
-├── pressure_exposure/
-│   ├── pressure_indicators_{match_id}.csv    # Per-block indicators
-│   └── pressure_composite_{match_id}.csv     # Pressure composite + classification
-├── signals/
-│   ├── positional_drift/
-│   │   └── {match_id}.csv                    # drift mean, p90, max per player-block
-│   ├── shift_latency/
-│   │   └── {match_id}.csv                    # mean reaction time per player-block
-│   ├── pressing_accuracy/
-│   │   └── {match_id}.csv                    # accuracy, n_presses per player-block
-│   └── transition_latency/
-│       └── {match_id}.csv                    # mean reaction time per player-block
-└── unified_fatigue_dataset.parquet           # All signals + pressure merged
+tracking.parquet
+    ├─→ Model 1 (pressure/) — 4 indicators → pressure composite + classification
+    └─→ Signals (signals/) — positional_drift / shift_latency / pressing_accuracy / transition_latency
+                ↓
+         merge_outputs.py  →  unified_fatigue_dataset.parquet
 ```
 
-### Unified Dataset Columns
+## What Each Signal Measures
 
-| Column | Type | Source |
-|--------|------|--------|
-| `game_id` | string | Match identifier |
-| `block_id` | string | Block identifier (e.g. `"1_0"`) |
-| `player_id` | int | Player identifier |
-| `team_id_opta` | int | Team identifier |
-| `opponent_proximity` | float | Mean opponents within 7m |
-| `defensive_depth` | float | Distance to own goal line |
-| `reorientations` | float | Reorientation count |
-| `zone_transitions` | float | Zone transition count |
-| `pressure_composite` | float | Weighted pressure index |
-| `pressure_category` | str | `"high"`, `"normal"`, `"low"` |
-| `positional_drift` | float | Mean drift distance (m) |
-| `shift_latency` | float | Mean reaction time (s) to triggers |
-| `pressing_accuracy` | float | Fraction of correct presses |
-| `transition_latency` | float | Mean reaction time (s) to transitions |
+| Signal | Input | Hypothesis |
+|--------|-------|-----------|
+| **Positional Drift** | Shape-model centroids | Fatigued defenders drift from expected positions |
+| **Shift Latency** | Ball speed spikes + opponent runs | Fatigued defenders react slower to sudden play shifts |
+| **Pressing Accuracy** | Bekkers Time-To-Intercept | Fatigued defenders make worse pressing decisions |
+| **Transition Latency** | Possession flip events | Fatigued defenders are slower to recognise turnovers |
 
----
+## Adding a New Signal
 
-## Module Tree
-
-```
-src/
-├── __init__.py
-│
-├── run_pressure.py           # CLI entry point for Model 1
-├── run_signals.py            # CLI entry point for all signals
-├── run_pipeline.py           # Unified pipeline: Model 1 → signals → merge
-├── merge_outputs.py          # Merge all outputs into unified parquet
-│
-├── pressure/                 # Model 1 — Pressure Exposure
-│   ├── config.py             #   Configuration dataclass
-│   ├── opponent_proximity.py #   Opponent proximity indicator
-│   ├── defensive_depth.py    #   Defensive depth indicator
-│   ├── reorientations.py     #   Reorientation detection
-│   ├── transitions.py        #   Zone transition detection
-│   ├── composite.py          #   Pressure composite + classification
-│   └── gk_utils.py           #   Goalkeeper detection heuristic
-│
-├── signals/                  # Model 2 — Defensive Quality Signals
-│   ├── base.py               #   Abstract signal base class
-│   ├── config.py             #   Signal framework configuration
-│   ├── output_schema.py      #   Standardised output schema + validation
-│   ├── registry.py           #   Signal auto-discovery registry
-│   │
-│   ├── positional_drift/     #   Signal 1 — Positional Drift
-│   │   ├── bridge.py         #     Player ↔ shape-role bridge
-│   │   ├── drift.py          #     Drift computation + aggregation
-│   │   └── config.py         #     Drift-specific configuration
-│   │
-│   ├── shift_latency/        #   Signal 2 — Shift Latency
-│   │   ├── triggers.py       #     Ball spike + opponent run detection
-│   │   ├── latency.py        #     Reaction time computation
-│   │   └── config.py         #     Shift latency configuration
-│   │
-│   ├── pressing/             #   Signal 3 — Pressing Accuracy
-│   │   ├── tti.py            #     Bekkers Time-To-Intercept
-│   │   ├── detection.py      #     Pressing event detection
-│   │   ├── accuracy.py       #     Classification + aggregation
-│   │   └── config.py         #     Pressing configuration
-│   │
-│   └── transition/           #   Signal 5 — Transition Latency
-│       ├── detector.py       #     Possession transition detection
-│       ├── latency.py        #     Reaction time computation
-│       └── config.py         #     Transition configuration
-│
-├── loaders/                  # Data Loading
-│   ├── load_tracking.py      #   Stats Perform tracking.parquet loader
-│   ├── load_shapes.py        #   Shape.json loader (V1 format)
-│   ├── load_events.py        #   Event data loader
-│   └── team_names.py         #   Team name ↔ UUID ↔ Opta ID bridge
-│
-├── smoothing.py              # Savitzky-Golay trajectory smoothing
-├── segments.py               # Match segmentation into 5-minute blocks
-│
-├── synthetic/                # Synthetic data generator for testing
-├── viz/                      # Plotting and visualisation
-└── tests/                    # Unit tests (syntax checks)
-
-
-scripts/
-└── debug_validate.py         # Smoke-test import/validation script
-```
-
----
-
-## Development
-
-```bash
-# Interactive testing on a small slice
-python3 src/run_pipeline.py --match 2215790 --nrows 5000
-
-# After changes, verify imports
-.venv/bin/python3 -c "from src.run_signals import main; print('✅ OK')"
-.venv/bin/python3 -c "from src.run_pipeline import main; print('✅ OK')"
-.venv/bin/python3 -c "from src.merge_outputs import main; print('✅ OK')"
-```
+1. Create a new file in `src/signals/` (e.g., `my_signal.py`)
+2. Define a class inheriting from `SignalBase` with `@register_signal`
+3. Import the module in `src/pipeline.py` (or `notebooks/pipeline.ipynb`)
+4. Done — it's auto-discovered via `list_signals()`
 
 ## Known Issues
 
-- **Signal 4 gap**: Signals are numbered 1, 2, 3, 5. Signal 4 has not yet been implemented.
-- **Orphaned module**: `src/baselines.py` defines `compute_player_baselines()` and `compute_global_baselines()` but is not imported by any other module.
-- **Empty modules**: `src/viz/`, `src/synthetic/`, and `src/tests/` contain only `__init__.py` placeholders with no implementation.
-- **Config inheritance**: Block/frame parameters (`block_window_minutes`, `frames_per_second`, etc.) are defined in `src/pressure/config.py` only. `src/signals/config.py` inherits these from `PressureConfig` and omits the duplicated fields.
-- **Signal 1 (Positional Drift):** Requires shape.json files in the shape directory. Bridge auto-detects team mappings from `team_mappings.csv`.
-- **Signal 3 (Pressing Accuracy):** Auto-detects team IDs from tracking data. Thresholds in `src/signals/pressing/config.py`.
-
-## API / Code Structure
-
-The project uses a signal framework with:
-- `SignalBase` — abstract base class in `src/signals/base.py`
-- `@register_signal` — decorator in `src/signals/registry.py`
-- Standard output schema in `src/signals/output_schema.py`
-- Dataclass-based configs for each signal module
-
-### Adding a New Signal
-
-1. Create `src/signals/your_signal/` with `__init__.py`
-2. Define a config dataclass and a class inheriting from `SignalBase`
-3. Decorate with `@register_signal` in `__init__.py`
-4. Import the module in `run_signals.py` for auto-registration
+- **Signal 4 gap**: Signals are numbered 1, 2, 3, 5. Signal 4 not yet implemented.
+- **Orphaned code removed**: Previous cleanup deleted `baselines.py`, `run_pressure.py`,
+  `run_signals.py`, empty placeholders (`synthetic/`, `tests/`, `viz/`), unused loaders
+  (`load_events.py`, `load_shapes.py`, `team_names.py`).
 
 ## License
 
