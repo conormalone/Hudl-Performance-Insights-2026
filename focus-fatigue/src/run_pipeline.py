@@ -132,7 +132,7 @@ def main():
         if not tracking_path.exists():
             continue
 
-        result = process_signals(match_id, tracking_path, nrows=args.nrows)
+        result = process_signals(match_id, tracking_path, nrows=args.nrows, source_dir=source_dir)
         signals_results.append(result)
 
     # ── Phase 3: Merge ──────────────────────────────────────────────────

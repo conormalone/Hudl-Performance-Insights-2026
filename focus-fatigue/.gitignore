@@ -19,11 +19,16 @@ data/processed/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 
-# Outputs (generated)
+# Outputs (generated — data files)
 outputs/*.csv
 outputs/*.parquet
 outputs/*.png
 outputs/*.pdf
+
+# But keep report markdown files and gitkeeps
+!outputs/*.md
+!outputs/**/*.md
+!outputs/**/.gitkeep
 
 # Notebooks checkpoints
 .ipynb_checkpoints/

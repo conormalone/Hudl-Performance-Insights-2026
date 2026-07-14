@@ -12,23 +12,10 @@ from typing import Optional
 class SignalConfig:
     """Configuration for signal computation and block processing.
 
-    Controls how tracking data is segmented into blocks for signal analysis.
-    Paths are configurable and default to a standard output layout.
+    Block/frame parameters are inherited from ``PressureConfig`` in
+    ``src.pressure.config`` and should be imported from there.
+    This config only holds signal-specific settings.
     """
-
-    # --- Block Parameters ---
-    block_window_minutes: int = 5
-    """Duration of each analysis block in minutes."""
-
-    block_min_frames: int = 100
-    """Minimum number of frames required for a valid block."""
-
-    # --- Frame Rate ---
-    frames_per_second: int = 25
-    """Frame rate of the tracking data."""
-
-    frame_interval_s: float = 0.04
-    """Time between frames (seconds) at 25 fps."""
 
     # --- Paths ---
     output_root: str = "outputs/signals"

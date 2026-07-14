@@ -58,9 +58,9 @@ class PressureConfig:
     """Blocks below this quantile are classified as low pressure (control)."""
 
     # --- Paths ---
-    sample_dir: str = "./data/raw/tracking/sample"
+    sample_dir: str = "/mnt/usb/conor_downloads/team_mappings/sample"
     """Directory containing sample match tracking data."""
-    tracking_dir: str = "./data/raw/tracking"
+    tracking_dir: str = "/mnt/usb/conor_downloads/team_mappings/tracking"
     """Directory containing all match tracking data."""
     output_dir: str = "./outputs/pressure_exposure"
     """Output directory for results."""

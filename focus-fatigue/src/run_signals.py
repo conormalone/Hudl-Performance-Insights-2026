@@ -106,6 +106,26 @@ def get_available_match_ids(tracking_dir: str) -> list[str]:
     )
 
 
+def find_shape_file(match_id: str, search_dirs: list[str]) -> Path | None:
+    """Find a shape.json file for ``match_id`` across candidate directories.
+
+    Tries:
+    - ``{dir}/{match_id}.json``
+    - ``{dir}/{match_id}/{match_id}.json``
+    for each directory in ``search_dirs``.
+    """
+    for sd in search_dirs:
+        base = Path(sd)
+        candidates = [
+            base / f"{match_id}.json",
+            base / match_id / f"{match_id}.json",
+        ]
+        for c in candidates:
+            if c.exists():
+                return c
+    return None
+
+
 # ── Match Processing ─────────────────────────────────────────────────────────
 
 
@@ -113,6 +133,7 @@ def process_one_match(
     match_id: str,
     tracking_path: Path,
     nrows: int | None = None,
+    source_dir: str | None = None,
 ) -> dict:
     """Load, smooth, segment, and compute all registered signals for one match.
 
@@ -123,6 +144,8 @@ def process_one_match(
         Path to ``tracking.parquet``.
     nrows : int or None
         If set, only load this many rows (for testing).
+    source_dir : str or None
+        Source directory for shape file discovery.
 
     Returns
     -------
@@ -149,6 +172,9 @@ def process_one_match(
 
     print(f"      {len(df):,} rows, {df['frame_count'].nunique():,} frames")
 
+    # Add 'frame' alias column for signals that expect it (e.g. positional_drift bridge)
+    df["frame"] = df["frame_count"]
+
     # Step 2: Smooth trajectories
     print("  [2] Smoothing trajectories...")
     df = smooth_trajectory(df, inplace=False)
@@ -170,6 +196,11 @@ def process_one_match(
     # Pre-convert block dicts once (needed by shift_latency)
     block_dicts = _blocks_to_dicts(blocks_dfs)
 
+    # Detect teams from tracking data (needed by pressing_accuracy)
+    outfield_teams = df[df["player_id"] != -1]["team_id_opta"].unique()
+    team_a = int(outfield_teams[0]) if len(outfield_teams) > 0 else 0
+    team_b = int(outfield_teams[1]) if len(outfield_teams) > 1 else 0
+
     # Step 4: Run each registered signal
     results = {}
     for signal_name in list_signals():
@@ -183,8 +214,6 @@ def process_one_match(
             signal = signal_cls()
 
             # Prepare compute kwargs
-            # run_pipeline() calls compute(match_df, blocks) without passing
-            # game_id, so we call compute() and save() separately.
             compute_kwargs: dict[str, Any] = {
                 "match_df": df,
                 "game_id": match_id,
@@ -195,6 +224,30 @@ def process_one_match(
                 compute_kwargs["blocks"] = block_dicts
             else:
                 compute_kwargs["blocks"] = blocks_dfs
+
+            # Signal-specific parameters
+            if signal_name == "pressing_accuracy":
+                # Pass both team IDs; pressing is computed for both directions
+                # own_team_id = team_a, opponent_team_id = team_b for first pass
+                # The signal implementation handles both directions internally
+                compute_kwargs["own_team_id"] = team_a
+                compute_kwargs["opponent_team_id"] = team_b
+
+            if signal_name == "positional_drift":
+                # Try to find a shape file for this match
+                shape_dirs = [
+                    str(Path(source_dir).parent / "shapes"),
+                    str(Path(source_dir).parent / "shape_outputs"),
+                    str(Path(source_dir).parent / "sample"),
+                    str(Path(source_dir).parent),
+                ]
+                shape_path = find_shape_file(match_id, shape_dirs)
+                if shape_path is not None:
+                    compute_kwargs["shape_path"] = str(shape_path)
+                else:
+                    print(f"      ⚠️  No shape file found for {match_id}. Skipping positional_drift.")
+                    results[signal_name] = {"rows": 0, "elapsed_s": 0, "error": "No shape file found"}
+                    continue
 
             # Compute signal
             output_df = signal.compute(**compute_kwargs)
@@ -310,7 +363,7 @@ def main():
             print(f"  ⚠️  {match_id}: tracking.parquet not found at {tracking_path}")
             continue
 
-        result = process_one_match(match_id, tracking_path, nrows=args.nrows)
+        result = process_one_match(match_id, tracking_path, nrows=args.nrows, source_dir=source_dir)
         all_results.append(result)
 
     # Summary

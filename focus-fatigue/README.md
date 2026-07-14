@@ -316,6 +316,10 @@ src/
 ├── synthetic/                # Synthetic data generator for testing
 ├── viz/                      # Plotting and visualisation
 └── tests/                    # Unit tests (syntax checks)
+
+
+scripts/
+└── debug_validate.py         # Smoke-test import/validation script
 ```
 
 ---
@@ -331,6 +335,30 @@ python3 src/run_pipeline.py --match 2215790 --nrows 5000
 .venv/bin/python3 -c "from src.run_pipeline import main; print('✅ OK')"
 .venv/bin/python3 -c "from src.merge_outputs import main; print('✅ OK')"
 ```
+
+## Known Issues
+
+- **Signal 4 gap**: Signals are numbered 1, 2, 3, 5. Signal 4 has not yet been implemented.
+- **Orphaned module**: `src/baselines.py` defines `compute_player_baselines()` and `compute_global_baselines()` but is not imported by any other module.
+- **Empty modules**: `src/viz/`, `src/synthetic/`, and `src/tests/` contain only `__init__.py` placeholders with no implementation.
+- **Config inheritance**: Block/frame parameters (`block_window_minutes`, `frames_per_second`, etc.) are defined in `src/pressure/config.py` only. `src/signals/config.py` inherits these from `PressureConfig` and omits the duplicated fields.
+- **Signal 1 (Positional Drift):** Requires shape.json files in the shape directory. Bridge auto-detects team mappings from `team_mappings.csv`.
+- **Signal 3 (Pressing Accuracy):** Auto-detects team IDs from tracking data. Thresholds in `src/signals/pressing/config.py`.
+
+## API / Code Structure
+
+The project uses a signal framework with:
+- `SignalBase` — abstract base class in `src/signals/base.py`
+- `@register_signal` — decorator in `src/signals/registry.py`
+- Standard output schema in `src/signals/output_schema.py`
+- Dataclass-based configs for each signal module
+
+### Adding a New Signal
+
+1. Create `src/signals/your_signal/` with `__init__.py`
+2. Define a config dataclass and a class inheriting from `SignalBase`
+3. Decorate with `@register_signal` in `__init__.py`
+4. Import the module in `run_signals.py` for auto-registration
 
 ## License
 
