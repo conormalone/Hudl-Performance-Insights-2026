@@ -94,7 +94,10 @@ def compute_tti(df: pd.DataFrame, config: PressingConfig, own_team_id: int, oppo
     tau_beta = config.beta_scaling * (1.0 - cos_theta) * tau_dist
     tti_value = config.reaction_time_s + tau_dist + tau_beta
     tta_threshold = compute_tta_threshold()
-    intercept_prob = 1.0 / (1.0 + np.exp(-config.tti_steepness_k * (tta_threshold - tti_value)))
+    # Numerically stable sigmoid — clip exponent to avoid overflow
+    x = -config.tti_steepness_k * (tta_threshold - tti_value)
+    x_clipped = np.clip(x, -700.0, 700.0)  # exp(709) overflows float64
+    intercept_prob = 1.0 / (1.0 + np.exp(x_clipped))
     pairs["distance"] = dist; pairs["tti_value"] = tti_value
     pairs["intercept_probability"] = intercept_prob; pairs["team_id_opta"] = own_team_id
     idx_min = pairs.groupby(["frame_count", "defender_id"])["tti_value"].idxmin()
@@ -152,40 +155,74 @@ def classify_pressing_accuracy(df: pd.DataFrame, tti_df: pd.DataFrame,
 
 def aggregate_pressing_by_block(df: pd.DataFrame, blocks: list[pd.DataFrame],
                                  config: PressingConfig, game_id: str = "") -> pd.DataFrame:
-    """Aggregate pressing accuracy per block per player."""
-    req = ["frame_count", "player_id", "is_pressing", "is_correct_press", "intercept_probability", "tti_value"]
+    """Aggregate pressing accuracy per block per player.
+
+    Uses per-block boolean masking instead of a cartesian cross-join
+    to avoid memory blow-up on the Pi (fixes 25-minute hang).
+    """
+    req = ["frame_count", "player_id", "is_pressing", "is_correct_press",
+           "intercept_probability", "tti_value"]
     missing = [c for c in req if c not in df.columns]
     if missing: raise ValueError(f"Missing columns: {missing}")
-    block_records = []
+
+    # Build block boundaries (avoids cartesian join)
+    block_info = []
     for block in blocks:
-        bid = str(block["block_id"].iloc[0]); ph = int(bid.split("_")[0])
-        block_records.append({"block_id": bid, "phase": ph,
-                              "start_frame": int(block["frame_count"].min()),
-                              "end_frame": int(block["frame_count"].max())})
-    bdf = pd.DataFrame(block_records)
-    df["_key"] = 1; bdf["_key"] = 1
-    merged = df.merge(bdf, on="_key").drop(columns="_key")
-    merged = merged[(merged["frame_count"] >= merged["start_frame"]) & (merged["frame_count"] < merged["end_frame"])].copy()
-    if len(merged) == 0:
-        return pd.DataFrame(columns=["game_id","block_id","phase","player_id","team_id_opta","signal_name",
-                                     "signal_value","n_frames","n_presses","mean_intercept_prob","p90_tti",
-                                     "total_correct","total_wasteful","pressing_accuracy"])
-    grouped = merged.groupby(["block_id", "phase", "player_id"], as_index=False)
-    agg = grouped.agg(n_frames=("frame_count","nunique"), n_presses=("is_pressing","sum"),
-                      correct_presses=("is_correct_press","sum"),
-                      mean_intercept_prob=("intercept_probability","mean"),
-                      p90_tti=("tti_value",lambda x: x.quantile(0.90)))
-    agg["pressing_accuracy"] = np.where(agg["n_presses"] > 0, agg["correct_presses"] / agg["n_presses"], 0.0)
-    agg["total_correct"] = agg["correct_presses"].astype(int)
-    agg["total_wasteful"] = (agg["n_presses"] - agg["correct_presses"]).astype(int)
+        bid = str(block["block_id"].iloc[0])
+        ph = int(bid.split("_")[0])
+        block_info.append({
+            "block_id": bid,
+            "phase": ph,
+            "start_frame": int(block["frame_count"].min()),
+            "end_frame": int(block["frame_count"].max()),
+        })
+
+    # Aggregate per block — memory-safe iteration
+    results = []
+    for bi in block_info:
+        mask = (df["frame_count"] >= bi["start_frame"]) & (df["frame_count"] < bi["end_frame"])
+        subset = df[mask].copy()
+        if len(subset) == 0:
+            continue
+        subset["block_id"] = bi["block_id"]
+        subset["phase"] = bi["phase"]
+
+        grouped = subset.groupby(["block_id", "phase", "player_id"], as_index=False)
+        agg = grouped.agg(
+            n_frames=("frame_count", "nunique"),
+            n_presses=("is_pressing", "sum"),
+            correct_presses=("is_correct_press", "sum"),
+            mean_intercept_prob=("intercept_probability", "mean"),
+            p90_tti=("tti_value", lambda x: x.quantile(0.90)),
+        )
+        results.append(agg)
+
+    if not results:
+        cols = ["game_id","block_id","phase","player_id","team_id_opta","signal_name",
+                "signal_value","n_frames","n_presses","mean_intercept_prob","p90_tti",
+                "total_correct","total_wasteful","pressing_accuracy"]
+        return pd.DataFrame(columns=cols)
+
+    result = pd.concat(results, ignore_index=True)
+    result["pressing_accuracy"] = np.where(
+        result["n_presses"] > 0, result["correct_presses"] / result["n_presses"], 0.0
+    )
+    result["total_correct"] = result["correct_presses"].astype(int)
+    result["total_wasteful"] = (result["n_presses"] - result["correct_presses"]).astype(int)
+
     team_map = df[["player_id", "team_id_opta"]].drop_duplicates("player_id") if "team_id_opta" in df.columns else None
-    output = agg.merge(team_map, on="player_id", how="left") if team_map is not None else agg.copy()
-    if "team_id_opta" not in output.columns: output["team_id_opta"] = 0
-    output["game_id"] = game_id; output["signal_name"] = "pressing_accuracy"
-    output["signal_value"] = output["pressing_accuracy"].astype(float)
+    if team_map is not None:
+        result = result.merge(team_map, on="player_id", how="left")
+    if "team_id_opta" not in result.columns:
+        result["team_id_opta"] = 0
+
+    result["game_id"] = game_id
+    result["signal_name"] = "pressing_accuracy"
+    result["signal_value"] = result["pressing_accuracy"].astype(float)
+
     sc = ["game_id","block_id","phase","player_id","team_id_opta","signal_name","signal_value","n_frames"]
     ec = ["n_presses","mean_intercept_prob","p90_tti","total_correct","total_wasteful","pressing_accuracy"]
-    return output[sc + [c for c in ec if c in output.columns]].reset_index(drop=True)
+    return result[sc + [c for c in ec if c in result.columns]].reset_index(drop=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
