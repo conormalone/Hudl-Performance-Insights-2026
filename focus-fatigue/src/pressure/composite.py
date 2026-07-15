@@ -126,7 +126,7 @@ def compute_pressure_composite(
     pd.DataFrame
         block_indicators with additional columns:
         - contribution_*: individual indicator contributions
-        - pressure_score: weighted composite
+        - pressure_composite: weighted composite
         - n_contributing_indicators: how many indicators contributed
     """
     if config is None:
@@ -161,7 +161,7 @@ def compute_pressure_composite(
             ("transition_rate", "transition_rate_baseline")
         )
 
-    result["pressure_score"] = 1.0
+    result["pressure_composite"] = 1.0
     result["n_contributing_indicators"] = 0
 
     for indicator_col, baseline_col in indicator_pairs:
@@ -181,7 +181,7 @@ def compute_pressure_composite(
         result[contrib_col] = contrib
 
         # Add to pressure score
-        result["pressure_score"] += contrib
+        result["pressure_composite"] += contrib
 
         # Count non-zero contributions
         result["n_contributing_indicators"] += (contrib > 0).astype(int)
@@ -195,8 +195,8 @@ def classify_pressure_blocks(
 ) -> pd.DataFrame:
     """Classify blocks into high/low pressure categories.
 
-    High pressure = top quartile (pressure_score > 75th percentile)
-    Low pressure = bottom quartile (pressure_score < 25th percentile)
+    High pressure = top quartile (pressure_composite > 75th percentile)
+    Low pressure = bottom quartile (pressure_composite < 25th percentile)
 
     Classification is done globally across all players and blocks
     to ensure quartile thresholds are meaningful.
@@ -220,7 +220,7 @@ def classify_pressure_blocks(
     result = pressure_df.copy()
 
     # Compute global quartile thresholds
-    scores = result["pressure_score"].dropna().values
+    scores = result["pressure_composite"].dropna().values
     if len(scores) == 0:
         result["pressure_quartile"] = np.nan
         result["pressure_category"] = "unknown"
@@ -239,12 +239,12 @@ def classify_pressure_blocks(
             pd.qcut(scores, q=n_bins, labels=False, duplicates="drop") + 1
         )
     result["pressure_quartile"] = np.nan
-    result.loc[result["pressure_score"].notna(), "pressure_quartile"] = quartile_labels
+    result.loc[result["pressure_composite"].notna(), "pressure_quartile"] = quartile_labels
 
     # Assign category
     result["pressure_category"] = "medium"
-    result.loc[result["pressure_score"] >= high_thresh, "pressure_category"] = "high"
-    result.loc[result["pressure_score"] <= low_thresh, "pressure_category"] = "low"
+    result.loc[result["pressure_composite"] >= high_thresh, "pressure_category"] = "high"
+    result.loc[result["pressure_composite"] <= low_thresh, "pressure_category"] = "low"
 
     return result
 
