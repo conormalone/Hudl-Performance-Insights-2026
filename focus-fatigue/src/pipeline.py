@@ -9,6 +9,7 @@ Usage:
 """
 
 import argparse
+import json
 import sys
 import time
 from pathlib import Path
@@ -97,7 +98,7 @@ def run_model1_on_match(match_id, tracking_path, config, nrows=None):
     print(f"  Loaded {len(df):,} rows")
 
     df = smooth_trajectory(df, inplace=False)
-    df = compute_velocity_features(df)
+    compute_velocity_features(df, inplace=True)
     print(f"  Smoothed trajectories")
 
     df = compute_opponent_proximity(df, config=config)
@@ -157,7 +158,7 @@ def run_signals_on_match(match_id, tracking_path, config, signals_config, source
     print(f"  Loaded {len(df):,} rows, {df['frame_count'].nunique():,} frames")
 
     df = smooth_trajectory(df, inplace=False)
-    df = compute_velocity_features(df)
+    compute_velocity_features(df, inplace=True)
     print(f"  Smoothed trajectories")
 
     blocks_dfs = split_into_blocks(df, window_minutes=config.block_window_minutes,
@@ -246,6 +247,28 @@ def run_pipeline(match_ids, tracking_dir, sample_dir, nrows=None, skip_merge=Fal
             continue
         result = run_model1_on_match(match_id, tracking_path, config, nrows=nrows)
         model1_results.append(result)
+
+    # ── Phase 1 checkpoint: save model1_results so Phase 2/3 can resume ──
+    checkpoint_path = OUTPUT_DIR / ".." / "model1_results_checkpoint.json"
+    checkpoint_path = checkpoint_path.resolve()
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    serialisable = []
+    for r in model1_results:
+        if "error" in r and r.get("error") is not None:
+            serialisable.append(r)
+        else:
+            serialisable.append({
+                "match_id": r["match_id"],
+                "n_players": r.get("n_players", 0),
+                "n_blocks": r.get("n_blocks", 0),
+                "high": r.get("high", 0),
+                "low": r.get("low", 0),
+                "elapsed_s": r.get("elapsed_s", 0),
+            })
+    with open(checkpoint_path, "w") as f:
+        json.dump(serialisable, f, indent=2)
+    print(f"  ✅ Model 1 checkpoint saved: {checkpoint_path}")
+    print(f"     {len(serialisable)} matches, {sum(r.get('n_blocks', 0) for r in serialisable)} blocks")
 
     # ── Phase 2: Signals ─────────────────────────────────────────────
     print(f"\n{'='*60}")

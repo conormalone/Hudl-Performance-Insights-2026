@@ -4,8 +4,6 @@ The raw tracking data at 25fps is generally clean, but smoothing
 helps reduce noise in derived velocity and acceleration metrics.
 """
 
-from typing import Optional
-
 import numpy as np
 import pandas as pd
 from scipy.signal import savgol_filter
@@ -100,15 +98,29 @@ def smooth_trajectory(
     return None
 
 
-def compute_velocity_features(df: pd.DataFrame) -> pd.DataFrame:
+def compute_velocity_features(df: pd.DataFrame, inplace: bool = False) -> pd.DataFrame | None:
     """Add derived features from velocity to a tracking DataFrame.
 
     Expects columns: speed, speed_x, speed_y (from raw data)
     or vx_smooth, vy_smooth (from smoothing).
 
     Adds: total_speed (magnitude), heading, turn_rate
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Tracking data for a single match.
+    inplace : bool, default False
+        If True, modify df in place and return None.
+        If False, return a new DataFrame.
+
+    Returns
+    -------
+    pd.DataFrame or None
+        New DataFrame with added columns, or None if inplace=True.
     """
-    df = df.copy()
+    if not inplace:
+        df = df.copy()
 
     # Use smoothed velocities if available, else raw
     if "vx_smooth" in df.columns:
@@ -132,4 +144,6 @@ def compute_velocity_features(df: pd.DataFrame) -> pd.DataFrame:
         d_heading = (d_heading + np.pi) % (2 * np.pi) - np.pi
         df.loc[mask, "turn_rate"] = d_heading / 0.04
 
+    if inplace:
+        return None
     return df
