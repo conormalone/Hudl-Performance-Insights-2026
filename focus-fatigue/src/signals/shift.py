@@ -247,6 +247,19 @@ def compute_shift_reaction_time(df: pd.DataFrame, trigger_df: pd.DataFrame,
     for t in all_teams:
         mask = (df["team_id_opta"] == t) & (df["player_id"] != BALL_PLAYER_ID)
         team_players[t] = df.loc[mask, "player_id"].unique()
+
+    # ── Precompute frame→possession lookup ───────────────────────────
+    # The original code looked up team_in_possession from the ball's row
+    # at each trigger frame via a dict-of-dicts.  We build a flat dict
+    # instead — much faster and correct.
+    ball_possession: dict[int, int | None] = {}
+    ball_df = df[df["player_id"] == BALL_PLAYER_ID]
+    if len(ball_df) > 0:
+        for _, brow in ball_df.iterrows():
+            f = int(brow["frame_count"])
+            v = brow.get("team_in_possession")
+            ball_possession[f] = int(v) if pd.notna(v) else None
+
     t0 = _log_timing("team_players setup", t0)
 
     # ── Iterate triggers (outer loop, ~50 iterations) ─────────────────
@@ -256,10 +269,10 @@ def compute_shift_reaction_time(df: pd.DataFrame, trigger_df: pd.DataFrame,
     for _, tr in trigger_df.iterrows():
         tid = int(tr["trigger_id"])
         tf = int(tr["frame"])
-        in_poss_team = tr.get("team_in_possession")
+        in_poss_team = ball_possession.get(tf)
 
         # Defensive teams = {all teams} \ {in_possession_team}
-        def_teams = [t for t in all_teams if pd.isna(in_poss_team) or t != int(in_poss_team)]
+        def_teams = [t for t in all_teams if in_poss_team is None or t != in_poss_team]
 
         for dt in def_teams:
             defenders = team_players[dt]
