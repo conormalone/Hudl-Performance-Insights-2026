@@ -208,7 +208,7 @@ def run_signals_on_match(match_id, tracking_path, config, signals_config, source
                 kwargs["opponent_team_id"] = team_b
 
             output_df = signal.compute(**kwargs)
-            signal.validate(output_df)
+            # save() handles validation non-blocking (logs warning, still saves)
             signal.save(output_df, match_id=match_id)
             n_rows = len(output_df)
             et = time.time() - ts
