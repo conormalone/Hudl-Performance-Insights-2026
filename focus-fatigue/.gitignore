@@ -30,6 +30,9 @@ outputs/*.pdf
 !outputs/**/*.md
 !outputs/**/.gitkeep
 
+# Analysis outputs
+!outputs/analysis/*.md
+
 # Notebooks checkpoints
 .ipynb_checkpoints/
 
