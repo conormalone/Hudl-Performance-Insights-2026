@@ -32,6 +32,7 @@ import src.signals.drift          # noqa: F401 — registers positional_drift
 import src.signals.shift          # noqa: F401 — registers shift_latency
 import src.signals.pressing       # noqa: F401 — registers pressing_accuracy
 import src.signals.transition     # noqa: F401 — registers transition_latency
+import src.signals.physical_load  # noqa: F401 — registers physical_load
 
 from src.signals.registry import list_signals, SIGNAL_REGISTRY
 
@@ -43,6 +44,7 @@ SIGNAL_DESCRIPTIONS = {
     "shift_latency": "Mean reaction time (s) to ball speed spikes and aggressive opponent runs.",
     "pressing_accuracy": "Fraction of pressing actions classified as 'correct' (intercept probability > threshold).",
     "transition_latency": "Mean reaction time (s) to possession transitions (turnovers).",
+    "physical_load": "Total distance (m), HSR/sprint distance, and speed metrics per block.",
 }
 
 
