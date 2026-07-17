@@ -29,6 +29,7 @@ class ShiftLatencyConfig:
 DEFAULT_SHIFT_LATENCY_CONFIG = ShiftLatencyConfig()
 
 import logging
+import time
 from typing import Any, Optional
 
 import numpy as np
@@ -39,6 +40,20 @@ from .registry import register_signal
 
 BALL_PLAYER_ID = -1
 
+# ── Debug flag: set True to print per-sub-function timings ─────────────
+# Set to True when profiling, False for production.
+_DEBUG_TIMING = False
+
+
+def _log_timing(label: str, t0: float) -> float:
+    """Print elapsed time if _DEBUG_TIMING is True.
+    Returns current time for chaining: t0 = _log_timing("...", t0)
+    """
+    if _DEBUG_TIMING:
+        et = time.time() - t0
+        print(f"    {label}: {et:.1f}s")
+    return time.time()
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Trigger Detection
@@ -46,7 +61,11 @@ BALL_PLAYER_ID = -1
 
 def detect_ball_speed_spikes(df: pd.DataFrame, config: ShiftLatencyConfig) -> pd.DataFrame:
     """Detect ball speed spike events."""
-    ball_df = df[df["player_id"] == BALL_PLAYER_ID].copy()
+    # Pre-filter to only needed columns before copy
+    _avail = [c for c in ("frame_count", "phase", "x", "y",
+                          "vx_smooth", "vy_smooth", "vx", "vy", "speed_x", "speed_y")
+              if c in df.columns]
+    ball_df = df.loc[df["player_id"] == BALL_PLAYER_ID, _avail].copy()
     if len(ball_df) == 0:
         return pd.DataFrame(columns=["spike_id", "frame", "phase", "peak_speed", "ball_x", "ball_y", "trigger_type"])
     ball_df = ball_df.sort_values("frame_count")
@@ -55,17 +74,22 @@ def detect_ball_speed_spikes(df: pd.DataFrame, config: ShiftLatencyConfig) -> pd
     bs = np.sqrt(vx.astype(np.float64)**2 + vy.astype(np.float64)**2)
     bs_smooth = pd.Series(bs).rolling(window=config.ball_speed_smoothing_frames, center=True, min_periods=1).mean().values
     is_spike = bs_smooth >= config.ball_speed_spike_threshold
-    groups = []; cur = []
-    for i in range(len(is_spike)):
-        if is_spike[i]: cur.append(i)
-        else:
-            if cur: groups.append(cur); cur = []
-    if cur: groups.append(cur)
-    if not groups: return pd.DataFrame(columns=["spike_id", "frame", "phase", "peak_speed", "ball_x", "ball_y", "trigger_type"])
+    if not is_spike.any():
+        return pd.DataFrame(columns=["spike_id", "frame", "phase", "peak_speed", "ball_x", "ball_y", "trigger_type"])
+    # Vectorised spike grouping
+    edges = np.diff(is_spike.astype(np.int8), prepend=0, append=0)
+    starts = np.where(edges == 1)[0]
+    ends = np.where(edges == -1)[0]
+    groups = [list(range(s, e)) for s, e in zip(starts, ends)]
+    # Merge nearby groups
     merged = [groups[0]]
+    fc_vals = ball_df["frame_count"].values
     for g in groups[1:]:
-        gap = ball_df.iloc[g[0]]["frame_count"] - ball_df.iloc[merged[-1][-1]]["frame_count"]
-        merged[-1].extend(g) if gap <= config.min_spike_gap_frames else merged.append(g)
+        gap = fc_vals[g[0]] - fc_vals[merged[-1][-1]]
+        if gap <= config.min_spike_gap_frames:
+            merged[-1].extend(g)
+        else:
+            merged.append(g)
     records = []
     for sid, gi in enumerate(merged):
         speeds = bs_smooth[gi]; pi = gi[np.argmax(speeds)]; pr = ball_df.iloc[pi]
@@ -80,40 +104,61 @@ def detect_opponent_runs(df: pd.DataFrame, config: ShiftLatencyConfig) -> pd.Dat
     if "team_in_possession" not in df.columns:
         return pd.DataFrame(columns=["run_id", "frame", "phase", "attacker_id", "attacker_team",
                                      "atk_speed", "atk_x", "atk_y", "trigger_type"])
-    outfield = df[(df["player_id"] != BALL_PLAYER_ID) & df["team_in_possession"].notna() &
-                  (df["team_id_opta"] == df["team_in_possession"])].copy()
-    if len(outfield) == 0: return pd.DataFrame(columns=["run_id", "frame", "phase", "attacker_id",
-                                                         "attacker_team", "atk_speed", "atk_x", "atk_y", "trigger_type"])
+    needed_cols = ["player_id", "team_id_opta", "frame_count", "phase", "x", "y",
+                   "vx_smooth", "vy_smooth", "vx", "vy", "speed_x", "speed_y"]
+    needed_cols = [c for c in needed_cols if c in df.columns]
+    out_mask = (df["player_id"] != BALL_PLAYER_ID) & df["team_in_possession"].notna() & (df["team_id_opta"] == df["team_in_possession"])
+    outfield = df.loc[out_mask, needed_cols].copy()
+    if len(outfield) == 0:
+        return pd.DataFrame(columns=["run_id", "frame", "phase", "attacker_id",
+                                     "attacker_team", "atk_speed", "atk_x", "atk_y", "trigger_type"])
     vx = outfield.get("vx_smooth", outfield.get("vx", 0)).values.astype(np.float64)
     vy = outfield.get("vy_smooth", outfield.get("vy", 0)).values.astype(np.float64)
-    outfield["atk_speed"] = np.sqrt(vx**2 + vy**2)
-    sprinting = outfield[outfield["atk_speed"] >= config.opponent_run_speed_threshold].copy()
-    if len(sprinting) == 0: return pd.DataFrame(columns=["run_id", "frame", "phase", "attacker_id",
-                                                         "attacker_team", "atk_speed", "atk_x", "atk_y", "trigger_type"])
-    records = []
-    for (pid, team), grp in sprinting.groupby(["player_id", "team_id_opta"]):
-        grp = grp.sort_values("frame_count")
-        cur_g = []; all_g = []
-        for i in range(len(grp)):
-            if cur_g and (grp.iloc[i]["frame_count"] - grp.iloc[cur_g[-1]]["frame_count"]) > 5:
-                all_g.append(cur_g); cur_g = [i]
-            else: cur_g.append(i)
-        if cur_g: all_g.append(cur_g)
-        for gi in all_g:
-            sp = grp.iloc[gi]["atk_speed"].values; pi_grp = gi[np.argmax(sp)]; pr = grp.iloc[pi_grp]
-            records.append({"run_id": len(records), "frame": int(pr["frame_count"]), "phase": int(pr.get("phase", 1)),
-                            "attacker_id": int(pid), "attacker_team": int(team), "atk_speed": float(sp.max()),
-                            "atk_x": float(pr.get("x", np.nan)), "atk_y": float(pr.get("y", np.nan)),
+    atk_speed = np.sqrt(vx**2 + vy**2)
+    sprint_mask = atk_speed >= config.opponent_run_speed_threshold
+    sprinting = outfield.loc[sprint_mask].copy()
+    if len(sprinting) == 0:
+        return pd.DataFrame(columns=["run_id", "frame", "phase", "attacker_id",
+                                     "attacker_team", "atk_speed", "atk_x", "atk_y", "trigger_type"])
+    sprinting["atk_speed"] = atk_speed[sprint_mask]
+    # Pre-sort once
+    sprinting = sprinting.sort_values(["player_id", "team_id_opta", "frame_count"])
+
+    records: list[dict] = []
+    for (pid, team), grp in sprinting.groupby(["player_id", "team_id_opta"], sort=False):
+        # Vectorised gap detection
+        frames_arr = grp["frame_count"].values
+        if len(frames_arr) == 0:
+            continue
+        gaps = np.diff(frames_arr) > 5
+        split_pts = np.where(gaps)[0] + 1
+        fragments = np.split(np.arange(len(grp)), split_pts)
+        for gi in fragments:
+            if len(gi) == 0:
+                continue
+            sp = grp["atk_speed"].values[gi]
+            pi_grp = gi[np.argmax(sp)]
+            pr = grp.iloc[pi_grp]
+            records.append({"run_id": len(records), "frame": int(pr["frame_count"]),
+                            "phase": int(pr.get("phase", 1)),
+                            "attacker_id": int(pid), "attacker_team": int(team),
+                            "atk_speed": float(sp.max()),
+                            "atk_x": float(pr.get("x", np.nan)),
+                            "atk_y": float(pr.get("y", np.nan)),
                             "trigger_type": "opponent_run"})
-    if not records: return pd.DataFrame(columns=["run_id", "frame", "phase", "attacker_id",
-                                                 "attacker_team", "atk_speed", "atk_x", "atk_y", "trigger_type"])
+    if not records:
+        return pd.DataFrame(columns=["run_id", "frame", "phase", "attacker_id",
+                                     "attacker_team", "atk_speed", "atk_x", "atk_y", "trigger_type"])
     return pd.DataFrame(records)
 
 
 def detect_all_triggers(df: pd.DataFrame, config: ShiftLatencyConfig) -> pd.DataFrame:
     """Combine ball speed spikes and opponent runs into unified trigger events."""
+    _t_debug = time.time()
     spikes = detect_ball_speed_spikes(df, config)
+    _t_debug = _log_timing("detect_ball_speed_spikes", _t_debug)
     runs = detect_opponent_runs(df, config)
+    _t_debug = _log_timing("detect_opponent_runs", _t_debug)
     if len(spikes) == 0 and len(runs) == 0:
         return pd.DataFrame(columns=["trigger_id", "frame", "phase", "trigger_type", "trigger_magnitude", "x", "y"])
     spikes["trigger_id"] = spikes["spike_id"]; runs["trigger_id"] = runs["run_id"] + (len(spikes) if len(spikes) > 0 else 0)
@@ -139,14 +184,21 @@ def _build_player_arrays(df: pd.DataFrame) -> dict:
     Returns dict: {player_id: {"frames": np.array, "v_mag": np.array,
                                 "heading": np.array, "vx": np.array}}
     """
+    # Pre-extract only needed columns before groupby to avoid carrying
+    # 40+ pressure columns through groupby overhead
+    vx_col = "vx_smooth" if "vx_smooth" in df.columns else ("vx" if "vx" in df.columns else "speed_x")
+    needed = ["player_id", "frame_count", "v_mag", "heading", vx_col]
+    sub = df[needed]
+    vx_col_idx = sub.columns.get_loc(vx_col)
+
     result = {}
-    for pid, grp in df.groupby("player_id"):
+    for pid, grp in sub.groupby("player_id", sort=False):
         grp = grp.sort_values("frame_count")
         arr = {
             "frames": grp["frame_count"].values.astype(np.int64),
             "v_mag": grp["v_mag"].values.astype(np.float64),
             "heading": grp["heading"].values.astype(np.float64),
-            "vx": grp.get("vx_smooth", grp.get("vx", grp.get("speed_x", np.zeros(len(grp))))).values.astype(np.float64),
+            "vx": grp.iloc[:, vx_col_idx].values.astype(np.float64),
         }
         result[int(pid)] = arr
     return result
@@ -178,16 +230,28 @@ def compute_shift_reaction_time(df: pd.DataFrame, trigger_df: pd.DataFrame,
             "valid", "trigger_type", "trigger_frame",
         ])
 
+    t0 = time.time()
+
     # ── Precompute player arrays ──────────────────────────────────────
     player_arrays = _build_player_arrays(df)
+    t0 = _log_timing("_build_player_arrays", t0)
 
-    # ── Identify "defensive" teams at each trigger ────────────────────
+    # ── Precompute per-team defender lists ONCE ───────────────────────
+    # Hoisted from inside the trigger loop — previously filtered the FULL
+    # 3.4M-row DataFrame ~100 times (50 triggers × 2 teams) just to get
+    # player IDs. Now done once.
     all_teams = sorted(
         int(t) for t in df[df["player_id"] != BALL_PLAYER_ID]["team_id_opta"].unique()
     )
+    team_players: dict[int, np.ndarray] = {}
+    for t in all_teams:
+        mask = (df["team_id_opta"] == t) & (df["player_id"] != BALL_PLAYER_ID)
+        team_players[t] = df.loc[mask, "player_id"].unique()
+    t0 = _log_timing("team_players setup", t0)
 
     # ── Iterate triggers (outer loop, ~50 iterations) ─────────────────
     records: list[dict] = []
+    n_triggers = len(trigger_df)
 
     for _, tr in trigger_df.iterrows():
         tid = int(tr["trigger_id"])
@@ -198,11 +262,7 @@ def compute_shift_reaction_time(df: pd.DataFrame, trigger_df: pd.DataFrame,
         def_teams = [t for t in all_teams if pd.isna(in_poss_team) or t != int(in_poss_team)]
 
         for dt in def_teams:
-            # Get defenders on this team
-            defenders = df[
-                (df["team_id_opta"] == dt)
-                & (df["player_id"] != BALL_PLAYER_ID)
-            ]["player_id"].unique()
+            defenders = team_players[dt]
 
             for raw_pid in defenders:
                 pid = int(raw_pid)
@@ -321,33 +381,66 @@ def compute_shift_reaction_time(df: pd.DataFrame, trigger_df: pd.DataFrame,
 
 def aggregate_shift_latency_by_block(latency_df: pd.DataFrame, blocks: list[dict],
                                       config: ShiftLatencyConfig, game_id: str = "") -> pd.DataFrame:
-    frame_to_block = {}
-    for blk in blocks:
-        bid = blk["block_id"]; ph = blk["phase"]
-        for f in range(blk["start_frame"], blk["end_frame"] + 1):
-            frame_to_block[f] = (bid, ph)
-    valid = latency_df[latency_df["valid"]].copy()
+    # Build frame→block mapping using numpy array for O(1) vectorised lookup
+    # instead of Python dict + for f in range(...) + lambda .map().
+    if not blocks:
+        return pd.DataFrame({c: pd.Series(dtype="str" if c in ("game_id","block_id","signal_name") else
+                                          "int" if c in ("phase","player_id","team_id_opta","n_frames") else "float")
+                             for c in ["game_id","block_id","phase","player_id","team_id_opta","signal_name","signal_value","n_frames"]})
+
+    all_start = min(b["start_frame"] for b in blocks)
+    all_end = max(b["end_frame"] for b in blocks)
+    n_total_frames = all_end - all_start + 1
+
+    # Build block_id lookup as an object array indexed by (frame - all_start)
+    # Only used if there are valid frames to map
+    valid = latency_df[latency_df["valid"]]
     if len(valid) == 0:
         return pd.DataFrame({c: pd.Series(dtype="str" if c in ("game_id","block_id","signal_name") else
                                           "int" if c in ("phase","player_id","team_id_opta","n_frames") else "float")
                              for c in ["game_id","block_id","phase","player_id","team_id_opta","signal_name","signal_value","n_frames"]})
-    valid["block_id"] = valid["trigger_frame"].map(lambda f: frame_to_block.get(int(f), (None, None))[0])
-    valid["phase"] = valid["trigger_frame"].map(lambda f: frame_to_block.get(int(f), (None, None))[1])
+
+    # Pre-allocate lookup arrays for O(1) frame→block mapping
+    bid_lookup = np.empty(n_total_frames, dtype=object)
+    phase_lookup = np.full(n_total_frames, -1, dtype=np.int64)
+    bid_lookup[:] = None
+
+    for blk in blocks:
+        start = blk["start_frame"] - all_start
+        end = blk["end_frame"] - all_start
+        bid_lookup[start:end + 1] = blk["block_id"]
+        phase_lookup[start:end + 1] = blk["phase"]
+
+    # Also build a fast block_id → n_frames lookup
+    block_nframes = {blk["block_id"]: blk.get("end_frame", 0) - blk.get("start_frame", 0)
+                     for blk in blocks}
+
+    idx_arr = valid["trigger_frame"].values.astype(np.int64) - all_start
+    in_range = (idx_arr >= 0) & (idx_arr < n_total_frames)
+
+    valid = valid.copy()
+    valid["block_id"] = None
+    valid["phase"] = -1
+    if in_range.any():
+        valid.loc[in_range, "block_id"] = bid_lookup[idx_arr[in_range]]
+        valid.loc[in_range, "phase"] = phase_lookup[idx_arr[in_range]]
+
     valid = valid.dropna(subset=["block_id"])
     if len(valid) == 0:
         return pd.DataFrame({c: pd.Series(dtype="str" if c in ("game_id","block_id","signal_name") else
                                           "int" if c in ("phase","player_id","team_id_opta","n_frames") else "float")
                              for c in ["game_id","block_id","phase","player_id","team_id_opta","signal_name","signal_value","n_frames"]})
-    agg = valid.groupby(["block_id", "phase", "player_id", "team_id_opta"]).agg(
+
+    agg = valid.groupby(["block_id", "phase", "player_id", "team_id_opta"], sort=False).agg(
         mean_reaction_time=("reaction_time_s", "mean"),
         p90_reaction_time=("reaction_time_s", lambda x: x.quantile(0.90)),
         n_triggers=("trigger_id", "nunique")).reset_index()
+
     records = []
     for _, row in agg.iterrows():
-        bf = 0
-        for blk in blocks:
-            if blk["block_id"] == row["block_id"]: bf = blk.get("end_frame", 0) - blk.get("start_frame", 0); break
-        records.append({"game_id": game_id, "block_id": row["block_id"], "phase": int(row["phase"]),
+        bid = row["block_id"]
+        bf = block_nframes.get(bid, 0)
+        records.append({"game_id": game_id, "block_id": bid, "phase": int(row["phase"]),
                         "player_id": int(row["player_id"]), "team_id_opta": int(row["team_id_opta"]),
                         "signal_name": "shift_latency", "signal_value": round(float(row["mean_reaction_time"]), 3),
                         "n_frames": bf})
@@ -367,12 +460,28 @@ class ShiftLatencySignal(SignalBase):
         self.shift_config = shift_config or DEFAULT_SHIFT_LATENCY_CONFIG
 
     def compute(self, match_df, blocks, *, game_id="", own_goal_direction="left"):
+        t0 = time.time()
         cfg = self.shift_config
+
+        t_sub = time.time()
         trigger_df = detect_all_triggers(match_df, cfg)
+        n_triggers = len(trigger_df)
+        t_sub = _log_timing("detect_all_triggers", t_sub)
+
         if len(trigger_df) == 0:
+            _log_timing(f"no triggers, total", t0)
             return pd.DataFrame(columns=["game_id","block_id","phase","player_id","team_id_opta","signal_name","signal_value","n_frames"])
+
         latency_df = compute_shift_reaction_time(match_df, trigger_df, cfg, own_goal_direction)
-        return aggregate_shift_latency_by_block(latency_df, blocks, cfg, game_id=game_id)
+        # Count how many players were scanned (unique player_ids in latency_df)
+        n_players_scanned = latency_df["player_id"].nunique() if len(latency_df) > 0 else 0
+        _log_timing(f"compute_shift_reaction_time ({n_triggers} triggers, {n_players_scanned} players)", t_sub)
+
+        result = aggregate_shift_latency_by_block(latency_df, blocks, cfg, game_id=game_id)
+        _log_timing("aggregate_shift_latency_by_block", t_sub)
+
+        _log_timing(f"total ({len(result)} rows)", t0)
+        return result
 
     def validate(self, output_df):
         super().validate(output_df)

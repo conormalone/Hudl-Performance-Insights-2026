@@ -178,7 +178,7 @@ def run_signals_on_match(match_id, tracking_path, config, signals_config, source
     for signal_name in list_signals():
         sig_cls = SIGNAL_REGISTRY[signal_name]
         ts = time.time()
-        print(f"  Computing {signal_name}...", end=" ", flush=True)
+        print(f"  Computing {signal_name}...")
 
         try:
             signal = sig_cls()
@@ -199,7 +199,7 @@ def run_signals_on_match(match_id, tracking_path, config, signals_config, source
                 if shape_path:
                     kwargs["shape_path"] = str(shape_path)
                 else:
-                    print("⚠️ No shape file")
+                    print("  ⚠️ No shape file")
                     results[signal_name] = {"rows": 0, "error": "No shape file"}
                     continue
 
@@ -212,12 +212,12 @@ def run_signals_on_match(match_id, tracking_path, config, signals_config, source
             signal.save(output_df, match_id=match_id)
             n_rows = len(output_df)
             et = time.time() - ts
-            print(f"✅ {n_rows} rows in {et:.1f}s")
+            print(f"  ✅ {n_rows} rows in {et:.1f}s")
             results[signal_name] = {"rows": n_rows, "elapsed_s": round(et, 2)}
 
         except Exception as e:
             et = time.time() - ts
-            print(f"❌ Error: {e}")
+            print(f"  ❌ Error: {e}")
             results[signal_name] = {"rows": 0, "elapsed_s": round(et, 2), "error": str(e)}
 
     total_elapsed = round(time.time() - t0, 1)
