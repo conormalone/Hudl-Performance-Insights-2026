@@ -32,6 +32,7 @@ outputs/*.pdf
 
 # Analysis outputs
 !outputs/analysis/*.md
+!outputs/analysis/*.png
 
 # Notebooks checkpoints
 .ipynb_checkpoints/
