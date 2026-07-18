@@ -10,15 +10,15 @@
 
 *Professional footballers run 10–12 km per match. Their lactate spikes. Their hamstrings fatigue. But what about the part of the game that happens above the shoulders?*
 
-Football's dominant performance narrative has been written in metres covered and sprints attempted. Yet modern defending, particularly against high-pressing opponents, taxes an invisible resource: **cognitive bandwidth**. Players must constantly reorient — scanning the field for threats, tracking opponents, anticipating transitions — while simultaneously managing their physical output. This study asks a question that sports science has mostly left to the laboratory: **Does thinking make footballers worse at seeing the game?**
+Football's dominant performance narrative has been written in metres covered and sprints attempted. Yet modern defending, particularly against high-pressing opponents, taxes an invisible resource: **cognitive bandwidth**. Players must constantly reorient — directional reactivity the field for threats, tracking opponents, anticipating transitions — while simultaneously managing their physical output. This study asks a question that sports science has mostly left to the laboratory: **Does thinking make footballers worse at seeing the game?**
 
 ### How the Study Addresses It
 
 Using 45,634 5-minute blocks from 459 players across 100 professional football matches, we isolate cognitive fatigue from physical fatigue by:
 
-1. **Demand-adjustment** — Building a baseline model of expected perceptual-cognitive behaviour (reorientation rate, pressing accuracy, shift latency) using only low-cognitive-load blocks, then measuring each player's deficit against their own expected performance.
+1. **Demand-adjustment** — Building a baseline model of expected movement-reactivity behaviour (reorientation rate, pressing accuracy, shift latency) using only low-cognitive-load blocks, then measuring each player's deficit against their own expected performance.
 
-2. **Physical load dissociation** — Testing whether cognitive signals decline independently of how much a player is running, using both continuous control (mixed models with accumulated load covariates) and categorical dissection (comparing Phase 1 → Phase 2 changes within physical load tertiles).
+2. **Physical load dissociation** — Testing whether cognitive signals decline independently of how much a player is running, using both continuous control (mixed models with accumulated load covariates) and categorical dissection (comparing high vs low accumulated load within physical load groups).
 
 3. **Within-player design** — Each player serves as their own control via random intercepts, eliminating between-player confounds (fitness, position, style).
 
@@ -26,24 +26,24 @@ Using 45,634 5-minute blocks from 459 players across 100 professional football m
 
 | Finding | Effect | Evidence |
 |---------|--------|----------|
-| **Reorientation rate declines under cognitive load** | −0.57 scans/block per SD of accumulated cognitive load (p < 0.001) | Survives physical load control across all window types (10-min rolling, 15-min decaying, half-cumulative, full-cumulative) |
-| **The effect is concentrated in a ~15-minute decay window** | −0.62 scans/block per SD (15-min decaying window) | Strongest of all window types; cognitive load from the last ~15 minutes matters most |
+| **Reorientation rate declines under cognitive load** | −0.57 reorientations/block per SD of accumulated cognitive load (p < 0.001) | Survives physical load control across all window types (10-min rolling, 15-min decaying, half-cumulative, full-cumulative) |
+| **The effect is concentrated in a ~15-minute decay window** | −0.62 reorientations/block per SD (15-min decaying window) | Strongest of all window types; cognitive load from the last ~15 minutes matters most |
 | **Cognitive fatigue is independent of physical fatigue** | Reorientation declines 5.65–16.47% across *all* physical load tertiles (all p < 0.0001) | Two-way ANOVA: pressing accuracy shows no interaction with physical load (F = 1.64, p = 0.194); reorientation shows universal decline regardless of exertion level |
-| **Pressing accuracy is a physical signal, not a cognitive one** | Univariate Phase 2 decline (−0.96 pp, p = 0.001) fully eliminated when physical load is controlled (p = 0.207) | The apparent "cognitive" decline in pressing accuracy is entirely compositional — driven by changes in physical output |
+| **Pressing accuracy is a physical signal, not a cognitive one** | Univariate decline under high load (−0.96 pp, p = 0.001) fully eliminated when physical load is controlled (p = 0.207) | The apparent "cognitive" decline in pressing accuracy is entirely compositional — driven by changes in physical output |
 | **DMs most affected, CBs least** | DM: Cog β = −0.0247 (p = 0.008); CB: Cog β = −0.0039 (p = 0.017) | Positions with highest baseline reorientation demands (DMs) show largest fatigue-related declines |
-| **Real-world impact** | −6.4 scans per 5-minute block in Phase 2; ~58 scans lost per second half | A midfielder who reorients 9+ times per minute in the first half may drop below 8 in the second |
+| **Real-world impact** | −6.4 reorientation events per 5-minute block under high load; ~58 fewer directional changes accumulated events lost per match period | A midfielder who reorients 9+ times per minute at low accumulated load may drop below 8 at high load |
 
 ### One-Sentence Bottom Line
 
-> **Accumulated cognitive load degrades a footballer's ability to perceive and respond to their defensive environment — costing approximately 0.5 fewer scans per block per standard deviation of cognitive demand — and this effect is independent of how much they are running, revealing that mental fatigue in elite match-play is a genuine and separable phenomenon from physical fatigue.**
+> **Accumulated cognitive load degrades a footballer's ability to perceive and respond to their defensive environment — costing approximately 0.5 fewer reorientation events per block per standard deviation of cognitive demand — and this effect is independent of how much they are running, revealing that mental fatigue in elite match-play is a genuine and separable phenomenon from physical fatigue.**
 
 ### Title Ideas
 
-1. **"The Cost of Thinking: Cognitive load independently predicts reduced perceptual-cognitive performance in elite footballers"**
+1. **"The Cost of Thinking: Cognitive load independently predicts reduced movement-reactivity performance in elite footballers"**
 2. **"Beyond the Burn: Cognitive fatigue in professional football dissociates from physical exertion"**
-3. **"When the Brain Tires Before the Body: Accumulated cognitive load degrades defensive scanning in elite match-play"**
-4. **"The Scanning Penalty: Within-player evidence for cognitive fatigue in 459 professional footballers across 100 matches"**
-5. **"Where Attention Goes: Cognitive load and the decay of perceptual-cognitive performance in elite football"**
+3. **"When the Brain Tires Before the Body: Accumulated cognitive load degrades defensive directional reactivity in elite match-play"**
+4. **"The Directional reactivity Penalty: Within-player evidence for cognitive fatigue in 459 professional footballers across 100 matches"**
+5. **"Where Attention Goes: Cognitive load and the decay of movement-reactivity performance in elite football"**
 
 ---
 
@@ -51,22 +51,22 @@ Using 45,634 5-minute blocks from 459 players across 100 professional football m
 
 ### Section Flow (optimal narrative order)
 
-#### 2.1 The Baseline: Do players perform differently in the second half?
+#### 2.1 The Baseline: Do players show movement reactivity decline under load?
 
-*Open with the raw phenomenon.* Present the Phase 1 → Phase 2 comparison table. The headline: reorientation rate drops 13.9%, from 46.1 to 39.7 scans per 5-minute block (d = −0.41, p < 0.0001). But physical load also drops 7.65%. Is this simply because players run less?
+*Open with the raw phenomenon.* Present the high vs low load comparison table. The headline: reorientation rate drops 13.9%, from 46.1 to 39.7 reorientation events per 5-minute block (d = −0.41, p < 0.0001). But physical load also drops 7.65%. Is this simply because players run less?
 
-**Key table to show:** Raw Phase 1 / Phase 2 means for all five signals (reorientation rate, shift latency, pressing accuracy, positional drift, transition latency) with Cohen's d and 95% CIs.
+**Key table to show:** raw means for high vs low load groups for all signals with Cohen's d and 95% CIs.
 
-**Narrative tension:** "On the surface, everything declines. But correlation is not causation — and in football, second halves are different games."
+**Narrative tension:** "On the surface, everything declines. But correlation is not causation — and in football, later match periods are different games."
 
 #### 2.2 The Dissociation: Cognitive vs Physical
 
 *The critical fork in the road.* Present the cognitive vs physical control results as the central analytic contribution.
 
 **Part A — Continuous control (Model 2):**
-- Reorientation rate: survives physical load control. Phase coefficient goes from −1.28 to −0.92, but remains highly significant (t = −34.00, p < 0.0001).
+- Reorientation rate: survives physical load control. Cognitive-load coefficient goes from −1.28 to −0.92, but remains highly significant (t = −34.00, p < 0.0001).
 - Shift latency: actually *strengthens* under physical control (from −1.53 to −1.87, p < 0.0001) — running suppresses the effect, or more running means less fatigue-related slowing.
-- **Pressing accuracy: eliminated.** The entire Phase 2 decline (−0.96 pp, p = 0.001) vanishes when physical load is added (p = 0.207). **This is the dissociation finding that sells the paper.**
+- **Pressing accuracy: eliminated.** The entire decline under high load (−0.96 pp, p = 0.001) vanishes when physical load is added (p = 0.207). **This is the dissociation finding that sells the paper.**
 
 **Part B — Categorical dissection (High-Load ANOVA):**
 - Show the two-way ANOVA table. Reorientation × Physical Load: interaction significant (F = 45.65, p < 0.0001) but all three load groups decline independently.
@@ -83,27 +83,27 @@ Using 45,634 5-minute blocks from 459 players across 100 professional football m
 
 **The key model:** `fatigue_deficit ~ rolling_cog_load + rolling_phys_load + (1|player_id)`
 
-- Per 1-SD increase in accumulated cognitive load: −0.57 scans/block (15-min decaying window strongest at −0.62).
+- Per 1-SD increase in accumulated cognitive load: −0.57 reorientations/block (15-min decaying window strongest at −0.62).
 - 15-minute decay window outperforms simple rolling or cumulative windows — cognitive fatigue has a window of relevance, like a half-life.
 - Survives physical load control across all four window types (all p < 0.0001).
 
 **Real-world context:**
-- Baseline reorientation rate: 8.57 scans/block
-- Effect per SD cognitive load: −0.62 scans/block → **~7.2% reduction**
-- A DM in a high-pressure match might accumulate 2+ SDs of cognitive load → >1 scan lost per block → 9+ fewer scans per 5-minute block
+- Baseline reorientation rate: 8.57 reorientations/block
+- Effect per SD cognitive load: −0.62 reorientations/block → **~7.2% reduction**
+- A DM in a high-pressure match might accumulate 2+ SDs of cognitive load → >1 reorientation event lost per block → 9+ fewer reorientation events per 5-minute block
 
 **Disaggregated components:** Which cognitive demands matter most?
 - Rolling pressure (opponent proximity): strongest driver (β = −0.54, p < 0.0001)
 - Depth of defensive position: second strongest (β = −0.48, p < 0.0001)
 - Opponents nearby mean and transition count: smaller but significant
-- Physical load coefficient is *positive* (β = +0.89) — more running associates with *more* scanning, not less
+- Physical load coefficient is *positive* (β = +0.89) — more running associates with *more* directional reactivity, not less
 
 #### 2.4 Position Differences
 
 *Now add granularity.* Present the position-stratified results.
 
 - **DMs** show the largest cognitive load sensitivity (Cog β = −0.0247, p = 0.008). These are the players with the highest baseline reorientation rates (9.16/block) and transition rates — they're the team's cognitive hub, and they pay the highest cognitive tax.
-- **CBs** show minimal sensitivity (Cog β = −0.0039, p = 0.017). Their scanning demands are lower (6.05/block), and their role is more structured.
+- **CBs** show minimal sensitivity (Cog β = −0.0039, p = 0.017). Their directional reactivity demands are lower (6.05/block), and their role is more structured.
 - **FBs and CM/Ws** fall in between, with non-significant cognitive load slopes.
 - **Caveat:** Position clustering was derived from behavioural data (k-means, silhouette = 0.209), not official positions. Results should be interpreted as behavioural role patterns rather than formal positional categories.
 
@@ -113,11 +113,11 @@ Using 45,634 5-minute blocks from 459 players across 100 professional football m
 
 | Metric | Per-Block Effect | Per-Half Impact | In Football Terms |
 |--------|-----------------|----------------|-------------------|
-| Reorientation rate | −6.4 scans/5-min block | −58 scans lost per half | A DM missing ~one scan every ~5 seconds of play |
+| Reorientation rate | −6.4 reorientations/5-min block | −58 reorientation events lost per match period | A DM missing ~one reorientation event every ~5 seconds of play |
 | Shift latency | Small, not robust to load control | — | Tempo effect, not fatigue |
 | Pressing accuracy | −0.96 pp raw; eliminated by physical control | — | Not a cognitive fatigue signal |
 
-**What 58 lost scans looks like:** A midfielder who normally processes visual information about opponents and space ~9 times per minute is now doing it ~8 times. On a critical transition, that one missing scan could mean a delayed read — a pass allowed through, a runner not tracked, a split-second that becomes a goal.
+**What 58 lost reorientation events looks like:** A midfielder who normally processes opponent positions and spatial relationships ~9 times per minute is now doing it ~8 times. On a critical transition, that one missed reorientation could mean a delayed read — a pass allowed through, a runner not tracked, a split-second that becomes a goal.
 
 **Calibrate expectation:** These effects are small in absolute terms but consistent across 100 matches and 459 players. In a sport where margins are razor-thin, a 7% reduction in perceptual sampling at the moment of highest cognitive demand is a non-trivial competitive disadvantage.
 
@@ -130,15 +130,15 @@ Using 45,634 5-minute blocks from 459 players across 100 professional football m
 **Chart type:** Grouped bar chart with error bars (95% CI)
 
 **What it shows:** 
-- Left panel: Reorientation rate Phase 1 → Phase 2, split by physical load tertile (low/medium/high). Three pairs of bars, each pair showing a clear decline.
-- Right panel: Pressing accuracy Phase 1 → Phase 2, split by same tertiles. Flat/no change within each pair.
-- Colour coding: Phase 1 = light blue, Phase 2 = dark blue. Different bar groups separated along x-axis by load level.
+- Left panel: Reorientation rate in high vs low cognitive load groups, split by physical load tertile (low/medium/high). Three pairs of bars, each pair showing a clear decline.
+- Right panel: Pressing accuracy in high vs low cognitive load groups, split by same tertiles. Flat/no change within each pair.
+- Colour coding: low load = light blue, high load = dark blue. Different bar groups separated along x-axis by load level.
 
 **Takeaway:** "Reorientation declines at every level of exertion; pressing accuracy doesn't change within any level. One signal tracks cognitive fatigue, the other tracks physical state."
 
-**Suggested title:** *"Figure 1. Cognitive fatigue dissociates from physical load. Reorientation rate declines significantly from Phase 1 to Phase 2 across all physical load tertiles (all p < 0.0001), while pressing accuracy shows no phase decline within any load group. Error bars represent 95% CIs."*
+**Suggested title:** *"Figure 1. Cognitive fatigue dissociates from physical load. Reorientation rate declines significantly from low to high cognitive load across all physical load tertiles (all p < 0.0001), while pressing accuracy shows no load-dependent decline within any load group. Error bars represent 95% CIs."*
 
-**Statistical annotations:** Cohen's d for each Phase 1 → Phase 2 comparison, printed above each bar pair.
+**Statistical annotations:** Cohen's d for each high vs low comparison, printed above each bar pair.
 
 ---
 
@@ -185,7 +185,7 @@ Using 45,634 5-minute blocks from 459 players across 100 professional football m
 
 **Panel B (dot plot):** Cognitive load coefficient (Cog β) for each position, with 95% CIs. Reference line at zero. DMs show the largest negative coefficient; CBs the smallest.
 
-**Takeaway:** "Players in cognitively demanding roles (DMs) show the largest fatigue-related reorientation deficits; players in structured, lower-scanning roles (CBs) show minimal effects."
+**Takeaway:** "Players in cognitively demanding roles (DMs) show the largest fatigue-related reorientation deficits; players in structured, lower-reorientation roles (CBs) show minimal effects."
 
 **Suggested title:** *"Figure 4. Position-specific cognitive fatigue sensitivity. (A) Behavioural profiles for position clusters derived from tracking data. (B) Cognitive load coefficients from demand-adjusted fatigue models, by position group. DMs show the highest sensitivity to accumulated cognitive load (β = −0.025, p = 0.008), CBs the lowest (β = −0.004, p = 0.017). Error bars represent 95% CIs."*
 
@@ -193,15 +193,15 @@ Using 45,634 5-minute blocks from 459 players across 100 professional football m
 
 ---
 
-### Bonus Figure (supplementary): Real-World Impact — Scans Lost in a Match
+### Bonus Figure (supplementary): Real-World Impact — Reorientation Events Lost in a Match Period
 
 **Chart type:** Simple infographic-style figure
 
 **What it shows:** 
 - An icon of a midfielder
-- Text: "~58 fewer scans per half" 
-- A small timeline showing scan frequency dropping from ~9/min to ~8/min
-- Football context: "That's one missed scan every ~6 seconds of defensive play"
+- Text: "~58 fewer reorientation events per half" 
+- A small timeline showing direction-change frequency dropping from ~9/min to ~8/min
+- Football context: "That's one missed reorientation event every ~6 seconds of defensive play"
 
 **Takeaway:** Makes the abstract numbers tangible for a coaching/science audience.
 
@@ -219,11 +219,11 @@ The limitations section should follow the "confession → mitigation → implica
 
 **Confession:** "Our dataset does not include per-minute scoreline data. This means we cannot directly control for game state — whether a team is winning, losing, or drawing — which is known to influence both tactical behaviour and cognitive engagement."
 
-**Why it matters:** A team protecting a lead may defensively "drop off," naturally reducing scanning demands. A team chasing a goal may increase pressure, increasing cognitive load. Without scoreline data, some of our cognitive load signal could partially reflect tactical state rather than fatigue per se.
+**Why it matters:** A team protecting a lead may defensively "drop off," naturally reducing directional reactivity demands. A team chasing a goal may increase pressure, increasing cognitive load. Without scoreline data, some of our cognitive load signal could partially reflect tactical state rather than fatigue per se.
 
 **Mitigation (what was done):**
 - The demand-adjusted model controls for the strongest correlates of game state: pressure composite (opponent proximity), depth of defensive line, opponents nearby, and transition count. These capture much of the tactical variation that scoreline would predict.
-- The within-player design means players are compared against their own baseline across the match — tactical shifts would need to systematically affect Phase 2 vs Phase 1 differently for each player to confound our results.
+- The within-player design means players are compared against their own baseline across the match — tactical shifts would need to systematically affect high vs low load blocks differently for each player to confound our results.
 - Physical load is controlled throughout, so the standard "team sits deeper when leading" pattern is at least partially absorbed.
 
 **Implication:** "Future work should incorporate granular scoreline data to verify that the cognitive fatigue signal is not an artefact of game-state-driven tactical changes. Real-time scoreline data would allow explicit interaction terms (cognitive_load × goal_differential) and definitively isolate fatigue from strategy."
@@ -256,13 +256,13 @@ The limitations section should follow the "confession → mitigation → implica
 
 A one-paragraph summary of what was actually done, suitable for the abstract/methods:
 
-> *"We analysed 45,634 five-minute player-match blocks from 459 outfield players across 100 professional football matches, using optical tracking data to derive perceptual-cognitive (reorientation rate, shift latency) and motor-execution (pressing accuracy) metrics. For each metric, we first computed a demand-adjusted deficit by subtracting a 'low-load baseline' expected performance — estimated from blocks below the median of rolling cognitive load — from each player's actual performance. We then fitted linear mixed models predicting these deficits from accumulated cognitive load (rolling pressure, opponent proximity, defensive depth) and accumulated physical load (total distance), with player-level random intercepts. To dissociate cognitive from physical fatigue, we compared Phase 1 → Phase 2 changes within physical load tertiles and tested whether cognitive load effects survived controlling for physical load in partial regression models."*
+> *"We analysed 45,634 five-minute player-match blocks from 459 outfield players across 100 professional football matches, using optical tracking data to derive movement-reactivity (reorientation rate, shift latency) and motor-execution (pressing accuracy) metrics. For each metric, we first computed a demand-adjusted deficit by subtracting a 'low-load baseline' expected performance — estimated from blocks below the median of rolling cognitive load — from each player's actual performance. We then fitted linear mixed models predicting these deficits from accumulated cognitive load (rolling pressure, opponent proximity, defensive depth) and accumulated physical load (total distance), with player-level random intercepts. To dissociate cognitive from physical fatigue, we compared high vs low cognitive load groups while controlling for accumulated physical load."*
 
 ---
 
 ## 6. Abstract Draft (200 words)
 
-> *Does mental fatigue in elite football exist independently of physical exertion? Using 45,634 five-minute player-match observations from 459 footballers across 100 matches, we show that accumulating cognitive demand degrades defensive perceptual-cognitive performance even after controlling for physical load. Under a demand-adjusted framework where each player serves as their own control, reorientation rate — a measure of defensive scanning — declines by 0.57–0.62 scans per block per standard deviation of accumulated cognitive load (p < 0.0001 across all accumulation windows), with the strongest effect in a 15-minute decaying window. The effect survives controlling for physical load in all model specifications. Critically, while pressing accuracy (a motor-execution metric) shows a raw second-half decline, this effect is fully eliminated when physical load is controlled — pressing accuracy tracks the body, not the brain. Reorientation rate, by contrast, declines significantly at every level of physical exertion (low: −16.47%, medium: −5.65%, high: −7.00%; all p < 0.0001), demonstrating a genuine dissociation. Defensive midfielders show the largest cognitive load sensitivity; centre-backs the least. These findings provide the first large-scale, ecologically-valid evidence that cognitive fatigue in professional football is a separable phenomenon from physical fatigue, with implications for substitution strategy, training load management, and in-game cognitive monitoring.*
+> *Does mental fatigue in elite football exist independently of physical exertion? Using 45,634 five-minute player-match observations from 459 footballers across 100 matches, we show that accumulating cognitive demand degrades defensive movement-reactivity performance even after controlling for physical load. Under a demand-adjusted framework where each player serves as their own control, reorientation rate — a measure of defensive directional reactivity — declines by 0.57–0.62 reorientation events per block per standard deviation of accumulated cognitive load (p < 0.0001 across all accumulation windows), with the strongest effect in a 15-minute decaying window. The effect survives controlling for physical load in all model specifications. Critically, while pressing accuracy (a motor-execution metric) shows a raw second-half decline, this effect is fully eliminated when physical load is controlled — pressing accuracy tracks the body, not the brain. Reorientation rate, by contrast, declines significantly at every level of physical exertion (low: −16.47%, medium: −5.65%, high: −7.00%; all p < 0.0001), demonstrating a genuine dissociation. Defensive midfielders show the largest cognitive load sensitivity; centre-backs the least. These findings provide the first large-scale, ecologically-valid evidence that cognitive fatigue in professional football is a separable phenomenon from physical fatigue, with implications for substitution strategy, training load management, and in-game cognitive monitoring.*
 
 ---
 
