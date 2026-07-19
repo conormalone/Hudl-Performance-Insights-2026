@@ -9,6 +9,7 @@ Usage:
 """
 
 import argparse
+import json
 import sys
 import time
 from pathlib import Path
@@ -224,10 +225,24 @@ def run_signals_on_match(match_id, tracking_path, config, signals_config, source
     return {"match_id": match_id, "elapsed_s": total_elapsed, "signals": results}
 
 
-def run_pipeline(match_ids, tracking_dir, sample_dir, nrows=None, skip_merge=False):
-    """Run full pipeline: Model 1 → Signals → Merge for given match IDs."""
+def run_pipeline(match_ids, tracking_dir, sample_dir, nrows=None, skip_merge=False,
+                 checkpoint_dir=None):
+    """Run full pipeline: Model 1 → Signals → Merge for given match IDs.
+
+    Parameters
+    ----------
+    checkpoint_dir : str or Path, optional
+        If set, saves per-phase summary JSON checkpoints to this directory
+        for crash recovery.
+    """
     total_start = time.time()
     config = DEFAULT_CONFIG
+
+    if checkpoint_dir is not None:
+        cp = Path(checkpoint_dir)
+        cp.mkdir(parents=True, exist_ok=True)
+    else:
+        cp = None
 
     model1_results = []
     signals_results = []
@@ -246,6 +261,10 @@ def run_pipeline(match_ids, tracking_dir, sample_dir, nrows=None, skip_merge=Fal
             continue
         result = run_model1_on_match(match_id, tracking_path, config, nrows=nrows)
         model1_results.append(result)
+        # Per-match checkpoint
+        if cp is not None:
+            with open(cp / "phase1_results.json", "w") as f:
+                json.dump(model1_results, f, indent=2, default=str)
 
     # ── Phase 2: Signals ─────────────────────────────────────────────
     print(f"\n{'='*60}")
@@ -260,6 +279,10 @@ def run_pipeline(match_ids, tracking_dir, sample_dir, nrows=None, skip_merge=Fal
             continue
         result = run_signals_on_match(match_id, tracking_path, config, None, tracking_dir, nrows=nrows)
         signals_results.append(result)
+        # Per-match checkpoint
+        if cp is not None:
+            with open(cp / "phase2_results.json", "w") as f:
+                json.dump(signals_results, f, indent=2, default=str)
 
     # ── Phase 3: Merge ──────────────────────────────────────────────
     if not skip_merge:
@@ -284,24 +307,31 @@ def run_pipeline(match_ids, tracking_dir, sample_dir, nrows=None, skip_merge=Fal
 
     p_success = [r for r in model1_results if "error" not in r]
     if p_success:
+        total_p1_time = sum(r.get('elapsed_s', 0) for r in p_success)
         print(f"\n  Model 1: {len(p_success)}/{len(model1_results)}")
         print(f"    Players: {sum(r.get('n_players', 0) for r in p_success)}")
         print(f"    High-pressure blocks: {sum(r.get('high', 0) for r in p_success)}")
         print(f"    Low-pressure blocks: {sum(r.get('low', 0) for r in p_success)}")
+        print(f"    Total time: {total_p1_time:.0f}s ({total_p1_time/60:.1f}m)")
 
     if signals_results:
         print(f"\n  Signals:")
+        sig_times_str = []
         for sn in list_signals():
             total_rows = sum(r["signals"].get(sn, {}).get("rows", 0) for r in signals_results)
+            total_time = sum(r["signals"].get(sn, {}).get("elapsed_s", 0) for r in signals_results)
             errors = [r["match_id"] for r in signals_results if r["signals"].get(sn, {}).get("error")]
             status = "❌" if errors else "✅"
             err_msg = f" (errors: {errors})" if errors else ""
-            print(f"    {status} {sn:<22} {total_rows:>6} rows{err_msg}")
+            time_str = f" in {total_time:.0f}s" if total_time else ""
+            print(f"    {status} {sn:<22} {total_rows:>6} rows{time_str}{err_msg}")
 
     print(f"\n  Outputs:")
     print(f"    Pressure:  {OUTPUT_DIR}/")
     print(f"    Signals:   outputs/signals/{{signal}}/{{match}}.csv")
     print(f"    Unified:   outputs/unified_fatigue_dataset.parquet")
+    if cp is not None:
+        print(f"    Checkpoints: {cp}/")
     print()
 
 
@@ -341,7 +371,9 @@ def main():
         print("No matches found. Check --tracking-dir or --sample-dir.")
         sys.exit(1)
 
-    run_pipeline(match_ids, source_dir, sample_dir, nrows=args.nrows, skip_merge=args.skip_merge)
+    checkpoint_dir = Path("./outputs/checkpoints")
+    run_pipeline(match_ids, source_dir, sample_dir, nrows=args.nrows,
+                 skip_merge=args.skip_merge, checkpoint_dir=checkpoint_dir)
 
 
 if __name__ == "__main__":

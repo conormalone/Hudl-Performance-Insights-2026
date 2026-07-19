@@ -121,64 +121,164 @@ def classify_transition_type(df: pd.DataFrame, trans_df: pd.DataFrame, config=No
 # Reaction Latency
 # ═══════════════════════════════════════════════════════════════════════════
 
+def _build_player_arrays(df: pd.DataFrame) -> dict[int, dict[str, np.ndarray]]:
+    """Pre-compute per-player numpy arrays for fast reaction time lookup."""
+    arrays: dict[int, dict[str, np.ndarray]] = {}
+    for pid, grp in df.groupby("player_id"):
+        g = grp.sort_values("frame_count")
+        vx_col = "vx_smooth" if "vx_smooth" in g.columns else "vx"
+        arrays[int(pid)] = {
+            "frame": g["frame_count"].values.astype(np.int64),
+            "v_mag": g["v_mag"].values.astype(np.float64),
+            "heading": g["heading"].values.astype(np.float64),
+            "vx": g[vx_col].values.astype(np.float64),
+        }
+    return arrays
+
+
+def _get_team_mapping(df: pd.DataFrame) -> dict[int, int]:
+    """Build {player_id: team_id_opta} lookup."""
+    mapping = {}
+    for _, row in df[["player_id", "team_id_opta"]].drop_duplicates(subset="player_id").iterrows():
+        pid = int(row["player_id"])
+        if pid == BALL_PLAYER_ID:
+            continue
+        mapping[pid] = int(row["team_id_opta"])
+    return mapping
+
+
 def compute_reaction_time(df: pd.DataFrame, trans_df: pd.DataFrame, config: TransitionConfig,
                            own_goal_direction: str = "left") -> pd.DataFrame:
-    fps = config.frames_per_second; win_fr = int(config.reaction_window_s * fps)
-    min_spd = config.min_reaction_speed; smoothing = config.direction_smoothing_frames
-    reo_thresh = config.reorientation_threshold_deg; max_rf = int(config.max_reaction_time_s * fps)
+    """
+    Vectorized reaction time computation for possession transitions.
+
+    Replaces frame-by-frame Python loops with numpy vectorized operations
+    on pre-computed per-player arrays.
+    """
+    fps = config.frames_per_second
+    win_fr = int(config.reaction_window_s * fps)
+    min_spd = config.min_reaction_speed
+    smoothing = config.direction_smoothing_frames
+    reo_thresh = config.reorientation_threshold_deg
+    reo_thresh_rad = np.radians(reo_thresh)
+    max_rf = int(config.max_reaction_time_s * fps)
     gw_sign = -1.0 if own_goal_direction == "left" else 1.0
-    groups = {pid: grp.sort_values("frame_count") for pid, grp in df.groupby("player_id")}
-    fpm = {}
-    for _, row in df.iterrows():
-        f = int(row["frame_count"])
-        if f not in fpm: fpm[f] = {}
-        fpm[f][int(row["player_id"])] = row
-    records = []
+
+    # Pre-compute per-player arrays
+    player_arrays = _build_player_arrays(df)
+    player_team = _get_team_mapping(df)
+
+    records: list[dict] = []
     for _, tr in trans_df.iterrows():
-        tid = int(tr["transition_id"]); tf = int(tr["frame"]); gt = int(tr["gaining_team"])
-        for pid in df[(df["team_id_opta"] == gt) & (df["player_id"] != BALL_PLAYER_ID)]["player_id"].unique():
-            pid = int(pid)
-            pre_spd = 0.0
-            pd_ = df[(df["player_id"] == pid) & (df["frame_count"] >= tf - smoothing) & (df["frame_count"] < tf)]
-            if len(pd_) > 0:
-                s = pd_["v_mag"].mean(); pre_spd = float(s) if pd.notna(s) else 0.0
-            piddf = groups.get(pid)
-            if piddf is None:
-                records.append({"transition_id": tid, "player_id": pid, "team_id_opta": gt, "reaction_time_s": np.nan,
-                                "pre_transition_speed": pre_spd, "post_transition_speed": 0.0,
-                                "heading_change_deg": 0.0, "valid": False}); continue
-            before = piddf[(piddf["heading"].notna()) & (piddf["frame_count"] < tf)]
-            bw = before.iloc[-smoothing:]
-            if len(bw) < 2:
-                records.append({"transition_id": tid, "player_id": pid, "team_id_opta": gt, "reaction_time_s": np.nan,
-                                "pre_transition_speed": pre_spd, "post_transition_speed": 0.0,
-                                "heading_change_deg": 0.0, "valid": False}); continue
-            pre_h = float(bw["heading"].mean()); ef = min(tf + win_fr, tf + max_rf, int(piddf["frame_count"].max()))
-            rf = None; rs = 0.0; rh = 0.0
-            for f in range(tf + 1, ef + 1):
-                pat = fpm.get(f, {}).get(pid)
-                if pat is None: continue
-                vm = pat.get("v_mag", 0.0)
-                if pd.isna(vm) or vm < min_spd: continue
-                vx = pat.get("vx_smooth", pat.get("vx", 0.0))
-                if pd.isna(vx) or vx * gw_sign >= 0: continue
-                h = pat.get("heading", np.nan)
-                if pd.isna(h): continue
-                hd = abs(h - pre_h); hd_deg = float(np.degrees(abs(hd))) % 360
-                if hd_deg > 180: hd_deg = 360 - hd_deg
-                if hd_deg < reo_thresh: continue
-                rf = f; rs = float(vm); rh = float(h); break
-            if rf is not None:
-                rt = (rf - tf) / fps; hd = abs(rh - pre_h); hd_deg = float(np.degrees(hd)) % 360
-                if hd_deg > 180: hd_deg = 360 - hd_deg
+        tid = int(tr["transition_id"])
+        tf = int(tr["frame"])
+        gt = int(tr["gaining_team"])
+
+        # Find players on the gaining team
+        def_pids = [pid for pid, pt in player_team.items() if pt == gt]
+        if not def_pids:
+            continue
+
+        for pid in def_pids:
+            pa = player_arrays.get(pid)
+            if pa is None:
                 records.append({"transition_id": tid, "player_id": pid, "team_id_opta": gt,
-                                "reaction_time_s": round(rt, 3), "pre_transition_speed": round(pre_spd, 3),
-                                "post_transition_speed": round(rs, 3), "heading_change_deg": round(hd_deg, 1),
-                                "valid": True})
+                                "reaction_time_s": np.nan, "pre_transition_speed": 0.0,
+                                "post_transition_speed": 0.0, "heading_change_deg": 0.0, "valid": False})
+                continue
+
+            # ── Pre-transition speed (vectorized) ──
+            pre_start = np.searchsorted(pa["frame"], tf - smoothing)
+            pre_end = np.searchsorted(pa["frame"], tf)
+            if pre_end > pre_start:
+                pre_spd = float(np.nanmean(pa["v_mag"][pre_start:pre_end]))
+            else:
+                pre_spd = 0.0
+
+            # ── Pre-transition heading ──
+            before_end = np.searchsorted(pa["frame"], tf)
+            before_start = max(0, before_end - smoothing)
+            if before_end - before_start >= 2:
+                bw_heading = pa["heading"][before_start:before_end]
+                bw_heading = bw_heading[~np.isnan(bw_heading)]
+                if len(bw_heading) >= 2:
+                    pre_h = float(np.mean(bw_heading))
+                else:
+                    records.append({"transition_id": tid, "player_id": pid, "team_id_opta": gt,
+                                    "reaction_time_s": np.nan, "pre_transition_speed": round(pre_spd, 3),
+                                    "post_transition_speed": 0.0, "heading_change_deg": 0.0, "valid": False})
+                    continue
             else:
                 records.append({"transition_id": tid, "player_id": pid, "team_id_opta": gt,
-                                "reaction_time_s": np.nan, "pre_transition_speed": pre_spd,
+                                "reaction_time_s": np.nan, "pre_transition_speed": round(pre_spd, 3),
                                 "post_transition_speed": 0.0, "heading_change_deg": 0.0, "valid": False})
+                continue
+
+            # ── Vectorized reaction search ──
+            end_f = min(tf + win_fr, tf + max_rf, int(pa["frame"][-1]))
+            start_idx = np.searchsorted(pa["frame"], tf + 1)
+            end_idx = np.searchsorted(pa["frame"], end_f + 1)
+
+            if start_idx >= end_idx:
+                records.append({"transition_id": tid, "player_id": pid, "team_id_opta": gt,
+                                "reaction_time_s": np.nan, "pre_transition_speed": round(pre_spd, 3),
+                                "post_transition_speed": 0.0, "heading_change_deg": 0.0, "valid": False})
+                continue
+
+            # Slice the reaction window
+            vm_slice = pa["v_mag"][start_idx:end_idx]
+            vx_slice = pa["vx"][start_idx:end_idx]
+            hdg_slice = pa["heading"][start_idx:end_idx]
+            frame_slice = pa["frame"][start_idx:end_idx]
+
+            # Vectorized conditions
+            # 1. Valid v_mag >= threshold
+            cond_vm = ~np.isnan(vm_slice) & (vm_slice >= min_spd)
+            # 2. Moving toward opponent goal
+            cond_vx = ~np.isnan(vx_slice) & (vx_slice * gw_sign < 0)
+            # 3. Valid heading
+            cond_hdg = ~np.isnan(hdg_slice)
+
+            combined = cond_vm & cond_vx & cond_hdg
+            if not combined.any():
+                records.append({"transition_id": tid, "player_id": pid, "team_id_opta": gt,
+                                "reaction_time_s": np.nan, "pre_transition_speed": round(pre_spd, 3),
+                                "post_transition_speed": 0.0, "heading_change_deg": 0.0, "valid": False})
+                continue
+
+            # Heading difference (preserving original transition logic: % 360, not [-pi, pi])
+            hd = hdg_slice[combined] - pre_h
+            hd_deg = np.degrees(np.abs(hd)) % 360
+            hd_deg[hd_deg > 180] = 360 - hd_deg[hd_deg > 180]
+
+            # 4. Heading change >= reorientation threshold
+            cond_reorient = hd_deg >= reo_thresh
+            if not cond_reorient.any():
+                records.append({"transition_id": tid, "player_id": pid, "team_id_opta": gt,
+                                "reaction_time_s": np.nan, "pre_transition_speed": round(pre_spd, 3),
+                                "post_transition_speed": 0.0, "heading_change_deg": 0.0, "valid": False})
+                continue
+
+            # Find first matching frame
+            match_indices = np.where(combined)[0]
+            reorient_indices = match_indices[cond_reorient]
+            first_idx = reorient_indices[0]
+
+            reaction_frame = int(frame_slice[first_idx])
+            react_vm = float(vm_slice[first_idx])
+            react_hdg = float(hdg_slice[first_idx])
+
+            rt = (reaction_frame - tf) / fps
+            hd_val = abs(react_hdg - pre_h)
+            hd_deg_val = float(np.degrees(hd_val)) % 360
+            if hd_deg_val > 180:
+                hd_deg_val = 360 - hd_deg_val
+
+            records.append({"transition_id": tid, "player_id": pid, "team_id_opta": gt,
+                            "reaction_time_s": round(rt, 3), "pre_transition_speed": round(pre_spd, 3),
+                            "post_transition_speed": round(react_vm, 3), "heading_change_deg": round(hd_deg_val, 1),
+                            "valid": True})
+
     cols = ["transition_id", "player_id", "team_id_opta", "reaction_time_s", "pre_transition_speed",
             "post_transition_speed", "heading_change_deg", "valid"]
     if not records:

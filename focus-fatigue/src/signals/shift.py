@@ -133,83 +133,203 @@ def detect_all_triggers(df: pd.DataFrame, config: ShiftLatencyConfig) -> pd.Data
 # Reaction Latency
 # ═══════════════════════════════════════════════════════════════════════════
 
-def _pre_trigger_speed(df, trigger_frame, player_id, smoothing_frames):
-    pd_ = df[(df["player_id"] == player_id) & (df["frame_count"] >= trigger_frame - smoothing_frames) & (df["frame_count"] < trigger_frame)]
-    if len(pd_) == 0: return 0.0
-    s = pd_["v_mag"].mean(); return float(s) if pd.notna(s) else 0.0
+def _build_player_arrays(df: pd.DataFrame) -> dict[int, dict[str, np.ndarray]]:
+    """Pre-compute per-player numpy arrays for fast reaction time lookup.
+
+    Returns {player_id: {"frame": ndarray, "v_mag": ndarray,
+                          "heading": ndarray, "vx": ndarray}}
+    """
+    arrays: dict[int, dict[str, np.ndarray]] = {}
+    for pid, grp in df.groupby("player_id"):
+        g = grp.sort_values("frame_count")
+        vx_col = "vx_smooth" if "vx_smooth" in g.columns else "vx"
+        arrays[int(pid)] = {
+            "frame": g["frame_count"].values.astype(np.int64),
+            "v_mag": g["v_mag"].values.astype(np.float64),
+            "heading": g["heading"].values.astype(np.float64),
+            "vx": g[vx_col].values.astype(np.float64),
+        }
+    return arrays
+
+
+def _get_team_mapping(df: pd.DataFrame) -> dict[int, int]:
+    """Build {player_id: team_id_opta} lookup."""
+    mapping = {}
+    for _, row in df[["player_id", "team_id_opta"]].drop_duplicates(subset="player_id").iterrows():
+        pid = int(row["player_id"])
+        if pid == BALL_PLAYER_ID:
+            continue
+        mapping[pid] = int(row["team_id_opta"])
+    return mapping
 
 
 def compute_shift_reaction_time(df: pd.DataFrame, trigger_df: pd.DataFrame,
                                 config: ShiftLatencyConfig,
                                 own_goal_direction: str = "left") -> pd.DataFrame:
-    fps = config.frames_per_second; win_fr = int(config.reaction_window_s * fps)
-    min_spd = config.min_reaction_speed; smoothing = config.direction_smoothing_frames
+    """
+    Vectorized reaction time computation for shift triggers.
+
+    Replaces frame-by-frame Python loops with numpy vectorized operations
+    on pre-computed per-player arrays. For each trigger+defender pair,
+    the reaction window is sliced out of the player's array and all
+    conditions are checked in one vectorized pass.
+    """
+    fps = config.frames_per_second
+    win_fr = int(config.reaction_window_s * fps)
+    min_spd = config.min_reaction_speed
+    smoothing = config.direction_smoothing_frames
     reorient_thresh = config.reorientation_threshold_deg
+    reorient_thresh_rad = np.radians(reorient_thresh)
     max_reaction_fr = int(config.max_reaction_time_s * fps)
     gw_sign = -1.0 if own_goal_direction == "left" else 1.0
-    group_map = {pid: grp.sort_values("frame_count") for pid, grp in df.groupby("player_id")}
-    frame_player_map = {}
-    for _, row in df.iterrows():
-        f = int(row["frame_count"])
-        if f not in frame_player_map: frame_player_map[f] = {}
-        frame_player_map[f][int(row["player_id"])] = row
-    records = []
+
+    # Pre-compute per-player arrays (avoids repeated groupby & DataFrame slicing)
+    player_arrays = _build_player_arrays(df)
+    player_team = _get_team_mapping(df)
+
+    # Build ball-frame lookup for team_in_possession
+    ball_df = df[df["player_id"] == BALL_PLAYER_ID][["frame_count", "team_in_possession"]].drop_duplicates("frame_count")
+    ball_frames = ball_df.set_index("frame_count")["team_in_possession"].to_dict()
+
+    # Group triggers by type for cleaner output
+    trigger_types = {}
     for _, tr in trigger_df.iterrows():
-        tid = int(tr["trigger_id"]); tf = int(tr["frame"])
-        ball_at = frame_player_map.get(tf, {}).get(BALL_PLAYER_ID)
-        in_poss_team = ball_at.get("team_in_possession") if ball_at is not None else None
-        all_teams = df[(df["player_id"] != BALL_PLAYER_ID)]["team_id_opta"].unique()
-        def_teams = [int(t) for t in all_teams if pd.isna(in_poss_team) or int(t) != int(in_poss_team)]
+        trigger_types[int(tr["trigger_id"])] = str(tr["trigger_type"])
+
+    all_player_ids = set(a for a in player_arrays.keys() if a != BALL_PLAYER_ID)
+
+    records: list[dict] = []
+    for _, tr in trigger_df.iterrows():
+        tid = int(tr["trigger_id"])
+        tf = int(tr["frame"])
+
+        # Determine defending teams
+        in_poss_team = ball_frames.get(tf)
+        if in_poss_team is None or (isinstance(in_poss_team, float) and np.isnan(in_poss_team)):
+            def_teams = set(player_team.values())
+        else:
+            in_poss_val = int(in_poss_team)
+            def_teams = {t for t in set(player_team.values()) if t != in_poss_val}
+
         for dt in def_teams:
-            for pid in df[(df["team_id_opta"] == dt) & (df["player_id"] != BALL_PLAYER_ID)]["player_id"].unique():
-                pid = int(pid)
-                pre_spd = _pre_trigger_speed(df, tf, pid, smoothing)
-                piddf = group_map.get(pid)
-                if piddf is None:
+            # Find defenders on this team
+            def_pids = [pid for pid, pt in player_team.items() if pt == dt]
+            if not def_pids:
+                continue
+
+            for pid in def_pids:
+                pa = player_arrays.get(pid)
+                if pa is None:
                     records.append({"trigger_id": tid, "player_id": pid, "team_id_opta": dt,
-                                    "reaction_time_s": np.nan, "pre_trigger_speed": pre_spd,
+                                    "reaction_time_s": np.nan, "pre_trigger_speed": 0.0,
                                     "post_trigger_speed": 0.0, "heading_change_deg": 0.0,
-                                    "valid": False, "trigger_type": str(tr["trigger_type"]),
+                                    "valid": False, "trigger_type": trigger_types.get(tid, ""),
                                     "trigger_frame": tf})
                     continue
-                before = piddf[(piddf["heading"].notna()) & (piddf["frame_count"] < tf)]
-                bw = before.iloc[-smoothing:]
-                if len(bw) < 2:
-                    records.append({"trigger_id": tid, "player_id": pid, "team_id_opta": dt,
-                                    "reaction_time_s": np.nan, "pre_trigger_speed": pre_spd,
-                                    "post_trigger_speed": 0.0, "heading_change_deg": 0.0,
-                                    "valid": False, "trigger_type": str(tr["trigger_type"]),
-                                    "trigger_frame": tf})
-                    continue
-                pre_hdg = float(bw["heading"].mean())
-                end_f = min(tf + win_fr, tf + max_reaction_fr, int(piddf["frame_count"].max()))
-                reaction_frame = None; react_spd = 0.0; react_hdg = 0.0
-                for f in range(tf + 1, end_f + 1):
-                    pat = frame_player_map.get(f, {}).get(pid)
-                    if pat is None: continue
-                    vm = pat.get("v_mag", 0.0)
-                    if pd.isna(vm) or vm < min_spd: continue
-                    vx = pat.get("vx_smooth", pat.get("vx", 0.0))
-                    if pd.isna(vx) or vx * gw_sign >= 0: continue
-                    hdg = pat.get("heading", np.nan)
-                    if pd.isna(hdg): continue
-                    hd = abs(hdg - pre_hdg); hd = (hd + np.pi) % (2 * np.pi) - np.pi
-                    hd_deg = float(np.degrees(abs(hd)))
-                    if hd_deg < reorient_thresh: continue
-                    reaction_frame = f; react_spd = float(vm); react_hdg = float(hdg); break
-                if reaction_frame is not None:
-                    rt = (reaction_frame - tf) / fps
-                    hd = abs(react_hdg - pre_hdg); hd = float(np.degrees(hd)) % 360
-                    if hd > 180: hd = 360 - hd
-                    records.append({"trigger_id": tid, "player_id": pid, "team_id_opta": dt,
-                                    "reaction_time_s": round(rt, 3), "pre_trigger_speed": round(pre_spd, 3),
-                                    "post_trigger_speed": round(react_spd, 3), "heading_change_deg": round(hd, 1),
-                                    "valid": True, "trigger_type": str(tr["trigger_type"]), "trigger_frame": tf})
+
+                # ── Pre-trigger speed (vectorized) ──
+                pre_start = np.searchsorted(pa["frame"], tf - smoothing)
+                pre_end = np.searchsorted(pa["frame"], tf)
+                if pre_end > pre_start:
+                    pre_spd = float(np.nanmean(pa["v_mag"][pre_start:pre_end]))
+                else:
+                    pre_spd = 0.0
+
+                # ── Pre-trigger heading (from last `smoothing` frames) ──
+                before_end = np.searchsorted(pa["frame"], tf)
+                before_start = max(0, before_end - smoothing)
+                if before_end - before_start >= 2:
+                    bw_heading = pa["heading"][before_start:before_end]
+                    bw_heading = bw_heading[~np.isnan(bw_heading)]
+                    if len(bw_heading) >= 2:
+                        pre_hdg = float(np.mean(bw_heading))
+                    else:
+                        records.append({"trigger_id": tid, "player_id": pid, "team_id_opta": dt,
+                                        "reaction_time_s": np.nan, "pre_trigger_speed": round(pre_spd, 3),
+                                        "post_trigger_speed": 0.0, "heading_change_deg": 0.0,
+                                        "valid": False, "trigger_type": trigger_types.get(tid, ""),
+                                        "trigger_frame": tf})
+                        continue
                 else:
                     records.append({"trigger_id": tid, "player_id": pid, "team_id_opta": dt,
-                                    "reaction_time_s": np.nan, "pre_trigger_speed": pre_spd,
+                                    "reaction_time_s": np.nan, "pre_trigger_speed": round(pre_spd, 3),
                                     "post_trigger_speed": 0.0, "heading_change_deg": 0.0,
-                                    "valid": False, "trigger_type": str(tr["trigger_type"]), "trigger_frame": tf})
+                                    "valid": False, "trigger_type": trigger_types.get(tid, ""),
+                                    "trigger_frame": tf})
+                    continue
+
+                # ── Vectorized reaction search ──
+                end_f = min(tf + win_fr, tf + max_reaction_fr, int(pa["frame"][-1]))
+                start_idx = np.searchsorted(pa["frame"], tf + 1)
+                end_idx = np.searchsorted(pa["frame"], end_f + 1)
+
+                if start_idx >= end_idx:
+                    records.append({"trigger_id": tid, "player_id": pid, "team_id_opta": dt,
+                                    "reaction_time_s": np.nan, "pre_trigger_speed": round(pre_spd, 3),
+                                    "post_trigger_speed": 0.0, "heading_change_deg": 0.0,
+                                    "valid": False, "trigger_type": trigger_types.get(tid, ""),
+                                    "trigger_frame": tf})
+                    continue
+
+                # Slice the reaction window
+                vm_slice = pa["v_mag"][start_idx:end_idx]
+                vx_slice = pa["vx"][start_idx:end_idx]
+                hdg_slice = pa["heading"][start_idx:end_idx]
+                frame_slice = pa["frame"][start_idx:end_idx]
+
+                # Vectorized conditions (all at once, no per-frame Python loop)
+                # 1. Valid v_mag >= threshold
+                cond_vm = ~np.isnan(vm_slice) & (vm_slice >= min_spd)
+                # 2. Moving toward opponent goal
+                cond_vx = ~np.isnan(vx_slice) & (vx_slice * gw_sign < 0)
+                # 3. Valid heading
+                cond_hdg = ~np.isnan(hdg_slice)
+
+                combined = cond_vm & cond_vx & cond_hdg
+                if not combined.any():
+                    records.append({"trigger_id": tid, "player_id": pid, "team_id_opta": dt,
+                                    "reaction_time_s": np.nan, "pre_trigger_speed": round(pre_spd, 3),
+                                    "post_trigger_speed": 0.0, "heading_change_deg": 0.0,
+                                    "valid": False, "trigger_type": trigger_types.get(tid, ""),
+                                    "trigger_frame": tf})
+                    continue
+
+                # Heading difference normalized to [-pi, pi]
+                hd_diff = hdg_slice[combined] - pre_hdg
+                hd_diff = (hd_diff + np.pi) % (2 * np.pi) - np.pi
+                hd_deg = np.degrees(np.abs(hd_diff))
+
+                # 4. Heading change >= reorientation threshold
+                cond_reorient = hd_deg >= reorient_thresh
+                if not cond_reorient.any():
+                    records.append({"trigger_id": tid, "player_id": pid, "team_id_opta": dt,
+                                    "reaction_time_s": np.nan, "pre_trigger_speed": round(pre_spd, 3),
+                                    "post_trigger_speed": 0.0, "heading_change_deg": 0.0,
+                                    "valid": False, "trigger_type": trigger_types.get(tid, ""),
+                                    "trigger_frame": tf})
+                    continue
+
+                # Find first matching frame
+                match_indices = np.where(combined)[0]
+                reorient_indices = match_indices[cond_reorient]
+                first_idx = reorient_indices[0]
+
+                reaction_frame = int(frame_slice[first_idx])
+                react_vm = float(vm_slice[first_idx])
+                react_hdg = float(hdg_slice[first_idx])
+
+                rt = (reaction_frame - tf) / fps
+                hd = abs(react_hdg - pre_hdg)
+                hd_deg = float(np.degrees(hd)) % 360
+                if hd_deg > 180:
+                    hd_deg = 360 - hd_deg
+
+                records.append({"trigger_id": tid, "player_id": pid, "team_id_opta": dt,
+                                "reaction_time_s": round(rt, 3), "pre_trigger_speed": round(pre_spd, 3),
+                                "post_trigger_speed": round(react_vm, 3), "heading_change_deg": round(hd_deg, 1),
+                                "valid": True, "trigger_type": trigger_types.get(tid, ""),
+                                "trigger_frame": tf})
+
     cols = ["trigger_id", "player_id", "team_id_opta", "reaction_time_s", "pre_trigger_speed",
             "post_trigger_speed", "heading_change_deg", "valid", "trigger_type", "trigger_frame"]
     if not records:
