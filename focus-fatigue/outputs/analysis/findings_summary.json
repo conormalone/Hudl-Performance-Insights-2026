@@ -1,0 +1,92 @@
+[
+  {
+    "Signal": "opponents_nearby_mean",
+    "Low Mean": 0.8719451255013455,
+    "High Mean": 0.9990765514942906,
+    "Change (%)": 14.580209496537744,
+    "Cohen's d": 0.1702785031781576,
+    "p-value": 7.906575632983783e-38,
+    "Significant": "Yes"
+  },
+  {
+    "Signal": "depth_mean",
+    "Low Mean": 53.19375719836253,
+    "High Mean": 59.41257402955366,
+    "Change (%)": 11.690877198241152,
+    "Cohen's d": 0.32457534602502264,
+    "p-value": 2.0967649544653116e-131,
+    "Significant": "Yes"
+  },
+  {
+    "Signal": "reorientation_count",
+    "Low Mean": 696.6036862334032,
+    "High Mean": 1036.323113207547,
+    "Change (%)": 48.76796285862861,
+    "Cohen's d": 0.9135739656876608,
+    "p-value": 0.0,
+    "Significant": "Yes"
+  },
+  {
+    "Signal": "transition_count",
+    "Low Mean": 0.40932914046121593,
+    "High Mean": 1.9722222222222223,
+    "Change (%)": 381.8181818181818,
+    "Cohen's d": 1.5595909344110526,
+    "p-value": 0.0,
+    "Significant": "Yes"
+  },
+  {
+    "Signal": "reorientation_rate",
+    "Low Mean": 6.926935654260047,
+    "High Mean": 9.328092149423878,
+    "Change (%)": 34.66405081570414,
+    "Cohen's d": 0.7392159028922018,
+    "p-value": 0.0,
+    "Significant": "Yes"
+  },
+  {
+    "Signal": "transition_rate",
+    "Low Mean": 0.00388390672357396,
+    "High Mean": 0.018348260100026242,
+    "Change (%)": 372.41763013150387,
+    "Cohen's d": 1.083163792849995,
+    "p-value": 0.0,
+    "Significant": "Yes"
+  },
+  {
+    "Signal": "positional_drift",
+    "Low Mean": 26.975217747374018,
+    "High Mean": 26.91737355421503,
+    "Change (%)": -0.21443457361755536,
+    "Cohen's d": -0.006599761329963065,
+    "p-value": 0.6882304047661338,
+    "Significant": "No"
+  },
+  {
+    "Signal": "pressing_accuracy",
+    "Low Mean": 0.3817703187016587,
+    "High Mean": 0.39698669803032083,
+    "Change (%)": 3.985741840908609,
+    "Cohen's d": 0.06330245512015839,
+    "p-value": 0.0007251953757313816,
+    "Significant": "Yes"
+  },
+  {
+    "Signal": "shift_latency",
+    "Low Mean": 9.482448944502819,
+    "High Mean": 2.5514431386409826,
+    "Change (%)": -73.09299366046037,
+    "Cohen's d": -0.1283054737086573,
+    "p-value": 5.652943568316166e-20,
+    "Significant": "Yes"
+  },
+  {
+    "Signal": "transition_latency",
+    "Low Mean": 1.0472978070175438,
+    "High Mean": 1.0001465499050433,
+    "Change (%)": -4.502182358881872,
+    "Cohen's d": -0.1158822005004978,
+    "p-value": 5.170499086816642e-13,
+    "Significant": "Yes"
+  }
+]

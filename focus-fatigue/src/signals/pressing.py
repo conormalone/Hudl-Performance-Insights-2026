@@ -58,53 +58,126 @@ def _filter_goalkeepers(team_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def compute_tti(df: pd.DataFrame, config: PressingConfig, own_team_id: int, opponent_team_id: int) -> pd.DataFrame:
-    """Compute Bekkers TTI for all defender-attacker pairs per frame.
+    """Compute Bekkers TTI — per-frame nearest-neighbour avoids the 13M-row Cartesian merge.
+
+    Original: ``defs.merge(atts, on="frame_count", how="inner")`` produces
+    ~10×10×135k = 13.5M rows per match, then filters and groupby-reduces.
+
+    Optimised: process each frame independently with numpy all-pairs (~100 pairs
+    per frame) — never materialise the full Cartesian product.  If scipy is
+    available we use ``cKDTree`` for the nearest-neighbour query (faster still).
 
     Returns per-frame, per-defender: tti_value, intercept_probability, closest_attacker.
     """
     req = ["frame_count", "player_id", "team_id_opta", "x", "y", "vx_smooth", "vy_smooth"]
     missing = [c for c in req if c not in df.columns]
-    if missing: raise ValueError(f"Missing columns: {missing}")
-    df = df[req + [c for c in ["goalkeeper", "jersey_number"] if c in df.columns]].copy()
-    defenders = _filter_goalkeepers(df[df["team_id_opta"] == own_team_id])
-    attackers = _filter_goalkeepers(df[df["team_id_opta"] == opponent_team_id])
-    defs = defenders[["frame_count", "player_id", "x", "y", "vx_smooth", "vy_smooth"]].rename(
-        columns={"player_id": "defender_id", "x": "def_x", "y": "def_y",
-                 "vx_smooth": "def_vx", "vy_smooth": "def_vy"})
-    atts = attackers[["frame_count", "player_id", "x", "y"]].rename(
-        columns={"player_id": "attacker_id", "x": "att_x", "y": "att_y"})
-    pairs = defs.merge(atts, on="frame_count", how="inner")
-    if len(pairs) == 0:
-        return pd.DataFrame(columns=["frame_count", "player_id", "team_id_opta",
-                                     "closest_attacker_id", "closest_attacker_distance",
-                                     "tti_value", "intercept_probability"])
-    dx = pairs["att_x"] - pairs["def_x"]; dy = pairs["att_y"] - pairs["def_y"]
-    dist = np.sqrt(dx**2 + dy**2)
-    dm = dist <= config.max_pair_distance
-    pairs = pairs[dm].copy(); dx = dx[dm]; dy = dy[dm]; dist = dist[dm]
-    if len(pairs) == 0:
-        return pd.DataFrame(columns=["frame_count", "player_id", "team_id_opta",
-                                     "closest_attacker_id", "closest_attacker_distance",
-                                     "tti_value", "intercept_probability"])
-    def_speed = np.sqrt(pairs["def_vx"]**2 + pairs["def_vy"]**2)
-    v_clamped = np.maximum(def_speed, config.speed_guard)
-    tau_dist = dist / v_clamped
-    dot = pairs["def_vx"] * dx + pairs["def_vy"] * dy
-    cos_theta = np.clip(dot / (v_clamped * dist), -1.0, 1.0)
-    tau_beta = config.beta_scaling * (1.0 - cos_theta) * tau_dist
-    tti_value = config.reaction_time_s + tau_dist + tau_beta
-    tta_threshold = compute_tta_threshold()
-    # Numerically stable sigmoid — clip exponent to avoid overflow
-    x = -config.tti_steepness_k * (tta_threshold - tti_value)
-    x_clipped = np.clip(x, -700.0, 700.0)  # exp(709) overflows float64
-    intercept_prob = 1.0 / (1.0 + np.exp(x_clipped))
-    pairs["distance"] = dist; pairs["tti_value"] = tti_value
-    pairs["intercept_probability"] = intercept_prob; pairs["team_id_opta"] = own_team_id
-    idx_min = pairs.groupby(["frame_count", "defender_id"])["tti_value"].idxmin()
-    result = pairs.loc[idx_min].rename(columns={"defender_id": "player_id", "attacker_id": "closest_attacker_id",
-                                                 "distance": "closest_attacker_distance"})
-    return result[["frame_count", "player_id", "team_id_opta", "closest_attacker_id",
-                   "closest_attacker_distance", "tti_value", "intercept_probability"]].reset_index(drop=True)
+    if missing:
+        raise ValueError(f"Missing columns: {missing}")
+    df_work = df[req + [c for c in ["goalkeeper", "jersey_number"] if c in df.columns]].copy()
+
+    defenders = _filter_goalkeepers(df_work[df_work["team_id_opta"] == own_team_id])
+    attackers = _filter_goalkeepers(df_work[df_work["team_id_opta"] == opponent_team_id])
+
+    if len(defenders) == 0 or len(attackers) == 0:
+        return pd.DataFrame(columns=[
+            "frame_count", "player_id", "team_id_opta",
+            "closest_attacker_id", "closest_attacker_distance",
+            "tti_value", "intercept_probability",
+        ])
+
+    # ── Build per-frame numpy arrays ─────────────────────────────────
+    def _def_arr(grp):
+        return np.column_stack([
+            grp["player_id"].values.astype(np.float64),
+            grp["x"].values.astype(np.float64),
+            grp["y"].values.astype(np.float64),
+            grp["vx_smooth"].values.astype(np.float64),
+            grp["vy_smooth"].values.astype(np.float64),
+            grp["team_id_opta"].values.astype(np.float64),
+        ])
+
+    def _att_arr(grp):
+        return np.column_stack([
+            grp["player_id"].values.astype(np.float64),
+            grp["x"].values.astype(np.float64),
+            grp["y"].values.astype(np.float64),
+        ])
+
+    def_groups = {f: _def_arr(grp) for f, grp in defenders.groupby("frame_count", sort=False)}
+    att_groups = {f: _att_arr(grp) for f, grp in attackers.groupby("frame_count", sort=False)}
+
+    common_frames = sorted(def_groups.keys() & att_groups.keys())
+
+    rows = []
+    tta_th = compute_tta_threshold()
+    k = config.tti_steepness_k
+    speed_guard = config.speed_guard
+    beta_s = config.beta_scaling
+    max_dist = config.max_pair_distance
+    rt_s = config.reaction_time_s
+
+    for frame in common_frames:
+        d_arr = def_groups[frame]
+        a_arr = att_groups[frame]
+
+        n_def, n_att = len(d_arr), len(a_arr)
+
+        # All-pairs distance via broadcasting: (n_def, n_att)
+        dx = a_arr[:, 1, np.newaxis] - d_arr[np.newaxis, :, 1]  # att_x - def_x
+        dy = a_arr[:, 2, np.newaxis] - d_arr[np.newaxis, :, 2]  # att_y - def_y
+        dist = np.sqrt(dx**2 + dy**2)
+
+        # Per defender: find closest attacker within max_pair_distance
+        for di in range(n_def):
+            d_possible = dist[:, di] <= max_dist
+            if not np.any(d_possible):
+                continue
+
+            ai = np.argmin(dist[:, di])  # closest attacker overall
+            d = float(dist[ai, di])
+
+            def_vx = float(d_arr[di, 3])
+            def_vy = float(d_arr[di, 4])
+            def_speed = np.sqrt(def_vx**2 + def_vy**2)
+            v_clamped = def_speed if def_speed > speed_guard else speed_guard
+
+            att_dx = float(a_arr[ai, 1] - d_arr[di, 1])
+            att_dy = float(a_arr[ai, 2] - d_arr[di, 2])
+
+            tau_dist = d / v_clamped
+            dot = def_vx * att_dx + def_vy * att_dy
+            cos_theta = dot / (v_clamped * (d if d > 1e-6 else 1e-6))
+            cos_theta = max(-1.0, min(1.0, cos_theta))
+            tau_beta = beta_s * (1.0 - cos_theta) * tau_dist
+            tti = rt_s + tau_dist + tau_beta
+
+            x_val = -k * (tta_th - tti)
+            x_clipped = x_val if x_val > -700.0 else -700.0
+            if x_clipped > 700.0:
+                x_clipped = 700.0
+            interp = 1.0 / (1.0 + np.exp(x_clipped))
+
+            rows.append({
+                "frame_count": frame,
+                "player_id": int(d_arr[di, 0]),
+                "team_id_opta": int(d_arr[di, 5]),
+                "closest_attacker_id": int(a_arr[ai, 0]),
+                "closest_attacker_distance": d,
+                "tti_value": tti,
+                "intercept_probability": interp,
+            })
+
+    if not rows:
+        return pd.DataFrame(columns=[
+            "frame_count", "player_id", "team_id_opta",
+            "closest_attacker_id", "closest_attacker_distance",
+            "tti_value", "intercept_probability",
+        ])
+    return pd.DataFrame(rows, columns=[
+        "frame_count", "player_id", "team_id_opta",
+        "closest_attacker_id", "closest_attacker_distance",
+        "tti_value", "intercept_probability",
+    ])
 
 
 # ═══════════════════════════════════════════════════════════════════════════

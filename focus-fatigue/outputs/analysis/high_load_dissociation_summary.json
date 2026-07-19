@@ -1,0 +1,29 @@
+{
+  "pressing_accuracy": {
+    "interpretation": "No phase decline within any physical load level; tracks physical state not fatigue",
+    "interaction_F": 1.6394088957239208,
+    "interaction_p": 0.19411766389157736,
+    "phase_decline_within_load": false,
+    "low_load_d": -0.017856175477378486,
+    "low_load_p": 0.4501297783057042,
+    "high_load_d": 0.033496932468695534,
+    "high_load_p": 0.15636920991097358
+  },
+  "reorientation_rate": {
+    "interpretation": "Significant phase decline within every physical load level \u2014 pure cognitive fatigue",
+    "interaction_F": 45.65249721461238,
+    "interaction_p": 1.5602105947443744e-20,
+    "phase_decline_within_load": true,
+    "low_load_d": -0.3158078186014246,
+    "low_load_p": 5.059076988715722e-75,
+    "high_load_d": -0.3605111025038839,
+    "high_load_p": 1.4236879641102645e-102
+  },
+  "high_load_z_test": {
+    "d_pressing_accuracy": 0.033496932468695534,
+    "d_reorientation_rate": -0.3605111025038839,
+    "d_diff": 0.3940080349725794,
+    "z": 13.607589503073807,
+    "p": 0.0
+  }
+}

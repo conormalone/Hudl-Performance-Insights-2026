@@ -1,0 +1,94 @@
+{
+  "10min": {
+    "reorientation_rate": {
+      "diff": 1.5637379630451589,
+      "p": 2.256526792363873e-260,
+      "d": 0.49211586357431625,
+      "worse": false,
+      "significant": true
+    },
+    "pressing_accuracy": {
+      "diff": 0.1271276154630992,
+      "p": 1.619247389606328e-159,
+      "d": 0.5473308957258015,
+      "worse": false,
+      "significant": true
+    },
+    "shift_latency": {
+      "diff": 2.7151056680880203,
+      "p": 6.404268697988351e-05,
+      "d": 0.05725096787308407,
+      "worse": true,
+      "significant": true
+    }
+  },
+  "15min_decay": {
+    "reorientation_rate": {
+      "diff": 1.9298030513551225,
+      "p": 0.0,
+      "d": 0.6158978267419261,
+      "worse": false,
+      "significant": true
+    },
+    "pressing_accuracy": {
+      "diff": 0.1581502816468323,
+      "p": 1.891299429639187e-240,
+      "d": 0.6810066931343165,
+      "worse": false,
+      "significant": true
+    },
+    "shift_latency": {
+      "diff": 2.954740291270867,
+      "p": 3.29366468152278e-05,
+      "d": 0.059435401758808036,
+      "worse": true,
+      "significant": true
+    }
+  },
+  "half": {
+    "reorientation_rate": {
+      "diff": 1.6840391813410953,
+      "p": 0.0,
+      "d": 0.5404208734014639,
+      "worse": false,
+      "significant": true
+    },
+    "pressing_accuracy": {
+      "diff": 0.13929013014232217,
+      "p": 2.1903867544676903e-192,
+      "d": 0.6061637924890437,
+      "worse": false,
+      "significant": true
+    },
+    "shift_latency": {
+      "diff": 2.5322791249707515,
+      "p": 0.00011071516207017237,
+      "d": 0.055261182168418514,
+      "worse": true,
+      "significant": true
+    }
+  },
+  "full": {
+    "reorientation_rate": {
+      "diff": 1.9181562629226487,
+      "p": 0.0,
+      "d": 0.6175270316461706,
+      "worse": false,
+      "significant": true
+    },
+    "pressing_accuracy": {
+      "diff": 0.17602875149652653,
+      "p": 6.39470197306558e-300,
+      "d": 0.7649603815703429,
+      "worse": false,
+      "significant": true
+    },
+    "shift_latency": {
+      "diff": 3.4284519265551587,
+      "p": 2.452545822129033e-06,
+      "d": 0.06737042010886607,
+      "worse": true,
+      "significant": true
+    }
+  }
+}

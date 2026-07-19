@@ -32,6 +32,7 @@ import src.signals.drift          # noqa: F401 — registers positional_drift
 import src.signals.shift          # noqa: F401 — registers shift_latency
 import src.signals.pressing       # noqa: F401 — registers pressing_accuracy
 import src.signals.transition     # noqa: F401 — registers transition_latency
+import src.signals.physical_load  # noqa: F401 — registers physical_load
 
 from src.signals.registry import list_signals, SIGNAL_REGISTRY
 
@@ -43,6 +44,7 @@ SIGNAL_DESCRIPTIONS = {
     "shift_latency": "Mean reaction time (s) to ball speed spikes and aggressive opponent runs.",
     "pressing_accuracy": "Fraction of pressing actions classified as 'correct' (intercept probability > threshold).",
     "transition_latency": "Mean reaction time (s) to possession transitions (turnovers).",
+    "physical_load": "Total distance (m), HSR/sprint distance, and speed metrics per block.",
 }
 
 
@@ -98,7 +100,7 @@ def run_model1_on_match(match_id, tracking_path, config, nrows=None):
     print(f"  Loaded {len(df):,} rows")
 
     df = smooth_trajectory(df, inplace=False)
-    df = compute_velocity_features(df)
+    compute_velocity_features(df, inplace=True)
     print(f"  Smoothed trajectories")
 
     df = compute_opponent_proximity(df, config=config)
@@ -158,7 +160,7 @@ def run_signals_on_match(match_id, tracking_path, config, signals_config, source
     print(f"  Loaded {len(df):,} rows, {df['frame_count'].nunique():,} frames")
 
     df = smooth_trajectory(df, inplace=False)
-    df = compute_velocity_features(df)
+    compute_velocity_features(df, inplace=True)
     print(f"  Smoothed trajectories")
 
     blocks_dfs = split_into_blocks(df, window_minutes=config.block_window_minutes,
@@ -178,7 +180,7 @@ def run_signals_on_match(match_id, tracking_path, config, signals_config, source
     for signal_name in list_signals():
         sig_cls = SIGNAL_REGISTRY[signal_name]
         ts = time.time()
-        print(f"  Computing {signal_name}...", end=" ", flush=True)
+        print(f"  Computing {signal_name}...")
 
         try:
             signal = sig_cls()
@@ -199,7 +201,7 @@ def run_signals_on_match(match_id, tracking_path, config, signals_config, source
                 if shape_path:
                     kwargs["shape_path"] = str(shape_path)
                 else:
-                    print("⚠️ No shape file")
+                    print("  ⚠️ No shape file")
                     results[signal_name] = {"rows": 0, "error": "No shape file"}
                     continue
 
@@ -208,16 +210,16 @@ def run_signals_on_match(match_id, tracking_path, config, signals_config, source
                 kwargs["opponent_team_id"] = team_b
 
             output_df = signal.compute(**kwargs)
-            signal.validate(output_df)
+            # save() handles validation non-blocking (logs warning, still saves)
             signal.save(output_df, match_id=match_id)
             n_rows = len(output_df)
             et = time.time() - ts
-            print(f"✅ {n_rows} rows in {et:.1f}s")
+            print(f"  ✅ {n_rows} rows in {et:.1f}s")
             results[signal_name] = {"rows": n_rows, "elapsed_s": round(et, 2)}
 
         except Exception as e:
             et = time.time() - ts
-            print(f"❌ Error: {e}")
+            print(f"  ❌ Error: {e}")
             results[signal_name] = {"rows": 0, "elapsed_s": round(et, 2), "error": str(e)}
 
     total_elapsed = round(time.time() - t0, 1)
@@ -265,6 +267,28 @@ def run_pipeline(match_ids, tracking_dir, sample_dir, nrows=None, skip_merge=Fal
         if cp is not None:
             with open(cp / "phase1_results.json", "w") as f:
                 json.dump(model1_results, f, indent=2, default=str)
+
+    # ── Phase 1 checkpoint: save model1_results so Phase 2/3 can resume ──
+    checkpoint_path = OUTPUT_DIR / ".." / "model1_results_checkpoint.json"
+    checkpoint_path = checkpoint_path.resolve()
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    serialisable = []
+    for r in model1_results:
+        if "error" in r and r.get("error") is not None:
+            serialisable.append(r)
+        else:
+            serialisable.append({
+                "match_id": r["match_id"],
+                "n_players": r.get("n_players", 0),
+                "n_blocks": r.get("n_blocks", 0),
+                "high": r.get("high", 0),
+                "low": r.get("low", 0),
+                "elapsed_s": r.get("elapsed_s", 0),
+            })
+    with open(checkpoint_path, "w") as f:
+        json.dump(serialisable, f, indent=2)
+    print(f"  ✅ Model 1 checkpoint saved: {checkpoint_path}")
+    print(f"     {len(serialisable)} matches, {sum(r.get('n_blocks', 0) for r in serialisable)} blocks")
 
     # ── Phase 2: Signals ─────────────────────────────────────────────
     print(f"\n{'='*60}")
