@@ -33,6 +33,8 @@ import src.signals.shift          # noqa: F401 — registers shift_latency
 import src.signals.pressing       # noqa: F401 — registers pressing_accuracy
 import src.signals.transition     # noqa: F401 — registers transition_latency
 import src.signals.physical_load  # noqa: F401 — registers physical_load
+import src.signals.polarisation           # noqa: F401 — registers team_polarisation
+import src.signals.team_centroid_distance  # noqa: F401 — registers team_centroid_distance
 
 from src.signals.registry import list_signals, SIGNAL_REGISTRY
 
@@ -45,6 +47,8 @@ SIGNAL_DESCRIPTIONS = {
     "pressing_accuracy": "Fraction of pressing actions classified as 'correct' (intercept probability > threshold).",
     "transition_latency": "Mean reaction time (s) to possession transitions (turnovers).",
     "physical_load": "Total distance (m), HSR/sprint distance, and speed metrics per block.",
+    "team_polarisation": "Mean resultant vector length R of unit velocity vectors per team per block during OOP.",
+    "team_centroid_distance": "Mean distance (m) from each player to their team centroid during OOP.",
 }
 
 
