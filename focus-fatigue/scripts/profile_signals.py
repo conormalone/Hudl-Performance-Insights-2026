@@ -18,11 +18,9 @@ from src.loaders import load_tracking_statsperform
 from src.smoothing import smooth_trajectory, compute_velocity_features
 from src.segments import split_into_blocks
 
-# Import all signal modules to register them
-import src.signals.drift
-import src.signals.shift
-import src.signals.pressing
-import src.signals.transition
+# Import the two new signal modules
+import src.signals.polarisation
+import src.signals.team_centroid_distance
 from src.signals.registry import list_signals, SIGNAL_REGISTRY
 
 
@@ -52,9 +50,6 @@ def profile_signal_match(match_id, nrows=None):
         print(f"❌ Match {match_id}: tracking.parquet not found")
         return
 
-    # Set team mappings path for drift signal
-    src.signals.drift._TEAM_MAPPINGS_PATH = TEAM_MAPPINGS_PATH
-
     print(f"\n{'='*70}")
     print(f"PROFILING: match {match_id}")
     print(f"{'='*70}")
@@ -67,28 +62,42 @@ def profile_signal_match(match_id, nrows=None):
         df = df.head(nrows)
     df["frame"] = df["frame_count"]
     load_time = time.time() - t0
-    print(f"\nLoad:   {load_time:.1f}s ({len(df):,} rows)")
+    print(f"\nLoad:   {load_time:.1f}s ({len(df):,} rows, {df['frame_count'].nunique():,} frames)")
 
     t0 = time.time()
     df = smooth_trajectory(df, inplace=False)
-    df = compute_velocity_features(df)
     smooth_time = time.time() - t0
     print(f"Smooth: {smooth_time:.1f}s")
 
     t0 = time.time()
-    blocks_dfs = split_into_blocks(df, window_minutes=5, min_frames=100)
+    df2 = compute_velocity_features(df)
+    vel_time = time.time() - t0
+    print(f"Velocity features: {vel_time:.1f}s")
+
+    t0 = time.time()
+    blocks_dfs = split_into_blocks(df2, window_minutes=5, min_frames=100)
     block_time = time.time() - t0
     print(f"Blocks: {block_time:.1f}s ({len(blocks_dfs)} blocks)")
     print(f"\n{'─'*70}")
 
     # Determine teams (for pressing_accuracy)
-    outfield_teams = df[df["player_id"] != -1]["team_id_opta"].unique()
+    outfield_teams = df2[df2["player_id"] != -1]["team_id_opta"].unique()
     team_a = int(outfield_teams[0]) if len(outfield_teams) > 0 else 0
     team_b = int(outfield_teams[1]) if len(outfield_teams) > 1 else 0
 
     # Shape path (for positional_drift)
     shape_path = find_shape_file(match_id)
     shape_available = shape_path is not None
+
+    # Import the other signal modules too for a full profile
+    import importlib
+    for mod_name in ['src.signals.drift', 'src.signals.shift', 
+                     'src.signals.pressing', 'src.signals.transition',
+                     'src.signals.physical_load']:
+        try:
+            importlib.import_module(mod_name)
+        except Exception:
+            pass
 
     # ── Profile each signal ─────────────────────────────────────────────
     results = {}
@@ -104,7 +113,7 @@ def profile_signal_match(match_id, nrows=None):
 
         try:
             signal = sig_cls()
-            kwargs = {"match_df": df, "game_id": match_id}
+            kwargs = {"match_df": df2, "game_id": match_id}
 
             if signal_name == "shift_latency":
                 # shift_latency needs dict-format blocks
@@ -132,19 +141,12 @@ def profile_signal_match(match_id, nrows=None):
                 kwargs["own_team_id"] = team_a
                 kwargs["opponent_team_id"] = team_b
 
-            import psutil
-            mem_before = psutil.Process().memory_info().rss / 1e6
-
             output_df = signal.compute(**kwargs)
             n_rows = len(output_df)
 
-            mem_after = psutil.Process().memory_info().rss / 1e6
-
             et = time.time() - ts
-            mem_delta = mem_after - mem_before
 
-            print(f"  ✅ {n_rows:>6} rows in {et:>7.1f}s  ({n_rows/max(et,0.1):>8.1f} rows/s)"
-                  f"  mem: +{mem_delta:.0f}MB")
+            print(f"  ✅ {n_rows:>6} rows in {et:>7.1f}s  ({n_rows/max(et,0.1):>8.1f} rows/s)")
             results[signal_name] = {"rows": n_rows, "elapsed_s": round(et, 2),
                                     "rows_per_sec": round(n_rows / max(et, 0.1), 1)}
 
@@ -172,7 +174,7 @@ def profile_signal_match(match_id, nrows=None):
         else:
             print(f"  {name:<28} {'skipped':>20}")
 
-    overhead = load_time + smooth_time + block_time
+    overhead = load_time + smooth_time + vel_time + block_time
     print(f"\n  Data prep overhead: {overhead:.1f}s")
     print(f"  Total signal time: {sum(r.get('elapsed_s', 0) for r in results.values()):.1f}s")
     print()
@@ -180,13 +182,98 @@ def profile_signal_match(match_id, nrows=None):
     return results
 
 
+# ── Deep Profile: Polarisation Internal ─────────────────────────────────────
+
+
+def profile_polarisation_deep(match_id, nrows=None):
+    """Deep profile of polarisation internals to find exact bottleneck."""
+    from src.signals.polarisation import (
+        compute_polarisation_block, compute_polarisation_frame
+    )
+
+    tracking_path = SAMPLE_DIR / match_id / "tracking.parquet"
+    if not tracking_path.exists():
+        tracking_path = TRACKING_DIR / match_id / "tracking.parquet"
+    if not tracking_path.exists():
+        print(f"❌ Match {match_id}: tracking.parquet not found")
+        return
+
+    print(f"\n{'='*70}")
+    print(f"DEEP PROFILE: polarisation internals — match {match_id}")
+    print(f"{'='*70}")
+
+    df = load_tracking_statsperform(str(tracking_path), match_id=match_id,
+                                     normalise_dop=True, include_ball=True)
+    if nrows:
+        df = df.head(nrows)
+    df["frame"] = df["frame_count"]
+    df = smooth_trajectory(df, inplace=False)
+    compute_velocity_features(df, inplace=True)
+    blocks_dfs = split_into_blocks(df, window_minutes=5, min_frames=100)
+
+    from src.signals.polarisation import _blocks_to_dicts
+    block_dicts = _blocks_to_dicts(blocks_dfs)
+
+    print(f"  Data loaded: {len(df):,} rows, {df['frame_count'].nunique():,} frames")
+    print(f"  Blocks: {len(block_dicts)}")
+
+    # Profile compute_polarisation_block per block
+    total_time = 0.0
+    total_frames = 0
+    for i, bd in enumerate(block_dicts):
+        start = bd["start_frame"]
+        end = bd["end_frame"]
+        frame_mask = df["frame_count"].between(start, end, inclusive="left")
+        block_df = df[frame_mask]
+        n_frames = block_df["frame_count"].nunique()
+        n_rows = len(block_df)
+
+        t0 = time.perf_counter()
+        records = compute_polarisation_block(df, bd)
+        elapsed = time.perf_counter() - t0
+
+        total_time += elapsed
+        total_frames += n_frames
+        print(f"  Block {i} ({bd['block_id']}): {n_frames} frames, {n_rows} rows → {elapsed:.3f}s ({n_frames/max(elapsed,0.001):.0f} f/s)")
+
+    print(f"\n  Total polarisation time: {total_time:.2f}s for {total_frames} frames ({total_frames/max(total_time,0.001):.0f} f/s)")
+
+    # Profile compute_polarisation_frame on first block's frames
+    print(f"\n  Per-frame breakdown (first block):")
+    bd = block_dicts[0]
+    frame_mask = df["frame_count"].between(bd["start_frame"], bd["end_frame"], inclusive="left")
+    block_df = df[frame_mask]
+    frame_vals = sorted(block_df["frame_count"].unique())
+    
+    times = []
+    for fv in frame_vals[:50]:  # First 50 frames
+        fdf = block_df[block_df["frame_count"] == fv]
+        t0 = time.perf_counter()
+        pol = compute_polarisation_frame(fdf)
+        elapsed = time.perf_counter() - t0
+        times.append(elapsed)
+
+    avg_time = sum(times) / len(times)
+    print(f"    Mean per-frame time: {avg_time*1000:.2f}ms over {len(times)} frames")
+    print(f"    Projected for {total_frames} frames: {avg_time * total_frames:.1f}s")
+
+    return total_time
+
+
+# ── Main ────────────────────────────────────────────────────────────────────
+
+
 def main():
     parser = argparse.ArgumentParser(description="Profile signal computation")
     parser.add_argument("--match", type=str, default="2215790")
-    parser.add_argument("--nrows", type=int, default=None, help="Limit rows (testing)")
+    parser.add_argument("--nrows", type=int, default=500000, help="Limit rows (testing)")
+    parser.add_argument("--deep", action="store_true", help="Run deep profile of polarisation")
     args = parser.parse_args()
 
-    profile_signal_match(args.match, nrows=args.nrows)
+    if args.deep:
+        profile_polarisation_deep(args.match, nrows=args.nrows)
+    else:
+        profile_signal_match(args.match, nrows=args.nrows)
 
 
 if __name__ == "__main__":
