@@ -1,0 +1,5 @@
+game_id,block_id,phase,player_id,team_id_opta,signal_name,signal_value,n_frames
+2215790,1_0,1,72177,862,shift_latency,1.58,217
+2215790,1_0,1,193411,862,shift_latency,0.48,217
+2215790,1_0,1,219873,862,shift_latency,2.4,217
+2215790,1_0,1,447547,862,shift_latency,1.58,217

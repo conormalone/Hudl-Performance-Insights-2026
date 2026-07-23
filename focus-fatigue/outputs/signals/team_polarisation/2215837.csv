@@ -1,0 +1,3 @@
+game_id,block_id,phase,player_id,team_id_opta,signal_name,signal_value,n_frames
+2215837,1_0,1,0,862,team_polarisation,0.812423,1830
+2215837,1_0,1,0,1983,team_polarisation,0.694949,627
