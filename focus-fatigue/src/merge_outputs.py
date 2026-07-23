@@ -178,6 +178,33 @@ def load_signal_data(signals_dir: str) -> dict[str, pd.DataFrame]:
     return signal_dfs
 
 
+# ── Signal-Level Detection ───────────────────────────────────────────────────
+
+
+def _is_team_level_signal(df: pd.DataFrame) -> bool:
+    """Check whether *df* is a team-level (not player-level) signal.
+
+    Team-level signals either lack a ``player_id`` column entirely, or have
+    *all* identical ``player_id`` values (e.g. the ``-1`` placeholder used by
+    ``team_polarisation``).
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Signal DataFrame to inspect.
+
+    Returns
+    -------
+    bool
+        ``True`` if the signal is team-level.
+    """
+    if "player_id" not in df.columns:
+        return True
+    # If player_id exists with only one distinct value (handles NaN safely), it
+    # is a team-level signal.
+    return df["player_id"].nunique(dropna=True) == 1
+
+
 # ── Merging ──────────────────────────────────────────────────────────────────
 
 
@@ -232,11 +259,55 @@ def merge_all(
 
     print(f"  Base table: {base_source} ({len(base)} rows)")
 
-    # ── Merge in each signal ──────────────────────────────────────────────
-    for signal_name, signal_df in signal_dfs.items():
-        n_before = len(base)
+    # ── Split signals into team-level and player-level ─────────────────
+    team_signal_names = {
+        name for name, df in signal_dfs.items()
+        if _is_team_level_signal(df)
+    }
+    player_signal_names = set(signal_dfs.keys()) - team_signal_names
 
-        # Extract just the signal_value column, pivoted to merge on keys
+    if team_signal_names:
+        print(f"  Team-level signals: {', '.join(sorted(team_signal_names))}")
+    if player_signal_names:
+        print(f"  Player-level signals: {', '.join(sorted(player_signal_names))}")
+
+    # ── Phase 1: Merge team-level signals (no player_id) ────────────────
+    #    Team-level signals have one value per (game_id, block_id,
+    #    team_id_opta).  Merging without player_id broadcasts that value
+    #    to every player row in the base, avoiding NaN matches from
+    #    the -1 placeholder.
+    team_merge_keys = [k for k in MERGE_KEYS if k != "player_id"]
+
+    for signal_name in sorted(team_signal_names):
+        signal_df = signal_dfs[signal_name]
+
+        merge_cols = [c for c in team_merge_keys if c in signal_df.columns]
+        if not merge_cols:
+            print(f"  ⚠️  {signal_name}: no merge keys found, skipping.")
+            continue
+
+        # Pivot signal values into a column named after the signal
+        signal_slim = signal_df[merge_cols + [SIGNAL_VALUE_COL]].copy()
+        signal_slim = signal_slim.rename(
+            columns={SIGNAL_VALUE_COL: signal_name}
+        )
+
+        # Drop duplicate rows (multiple entries per team-block from
+        # different sub-tables)
+        signal_slim = signal_slim.drop_duplicates(subset=merge_cols)
+
+        # Merge (many-to-one: base has many players, signal has one team
+        # value per block → broadcasts to all players)
+        base = base.merge(signal_slim, on=merge_cols, how="left")
+
+        n_matched = signal_slim[merge_cols].drop_duplicates().shape[0]
+        print(f"  + {signal_name} [team-level]: {n_matched} matches → "
+              f"{len(base)} rows in base")
+
+    # ── Phase 2: Merge player-level signals (with full MERGE_KEYS) ──────
+    for signal_name in sorted(player_signal_names):
+        signal_df = signal_dfs[signal_name]
+
         merge_cols = [c for c in MERGE_KEYS if c in signal_df.columns]
         if not merge_cols:
             print(f"  ⚠️  {signal_name}: no merge keys found, skipping.")
@@ -255,9 +326,9 @@ def merge_all(
         # Merge
         base = base.merge(signal_slim, on=merge_cols, how="left")
 
-        n_new = len(base)
         n_matched = signal_slim[merge_cols].drop_duplicates().shape[0]
-        print(f"  + {signal_name}: {n_matched} matches → {n_new} rows in base")
+        print(f"  + {signal_name} [player-level]: {n_matched} matches → "
+              f"{len(base)} rows in base")
 
     # ── Save ─────────────────────────────────────────────────────────────
     output = Path(output_path)
